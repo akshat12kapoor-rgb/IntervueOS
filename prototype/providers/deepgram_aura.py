@@ -19,6 +19,8 @@ from urllib.parse import urlencode
 
 from websockets.asyncio.client import ClientConnection, connect
 
+from providers._tls import tls_context
+
 log = logging.getLogger("intervueos.tts")
 
 _URL = "wss://api.deepgram.com/v1/speak"
@@ -45,6 +47,7 @@ class DeepgramAuraTts:
         self._ws = await connect(
             self._url,
             additional_headers={"Authorization": f"Token {self._api_key}"},
+            ssl=tls_context(),
             max_size=None,
         )
         return self

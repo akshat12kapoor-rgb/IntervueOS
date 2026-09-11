@@ -42,6 +42,10 @@ class SttEvent:
     turn_index: int
     words: Sequence[Word] = field(default_factory=tuple)
     end_of_turn_confidence: float = 0.0
+    trigger: str = ""
+    """On END_OF_TURN only. Deepgram reports whether the turn ended because
+    the model was confident or because the silence timeout expired. A
+    timeout-triggered turn is a multi-second dead pause for the candidate."""
     audio_window_start: float = 0.0
     audio_window_end: float = 0.0
 

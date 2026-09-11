@@ -13,6 +13,8 @@ from urllib.parse import urlencode
 
 from websockets.asyncio.client import ClientConnection, connect
 
+from providers._tls import tls_context
+
 from providers.base import SttEvent, TurnEvent, Word
 
 log = logging.getLogger("intervueos.stt")
@@ -57,6 +59,7 @@ class DeepgramFluxStt:
         self._ws = await connect(
             self._url,
             additional_headers={"Authorization": f"Token {self._api_key}"},
+            ssl=tls_context(),
             max_size=None,
         )
         return self
@@ -111,6 +114,7 @@ class DeepgramFluxStt:
                     for w in msg.get("words", []) or ()
                 ),
                 end_of_turn_confidence=msg.get("end_of_turn_confidence", 0.0) or 0.0,
+                trigger=msg.get("trigger", "") or "",
                 audio_window_start=msg.get("audio_window_start", 0.0) or 0.0,
                 audio_window_end=msg.get("audio_window_end", 0.0) or 0.0,
             )

@@ -1,5 +1,10 @@
 # Cost Model
 
+> **Measurement status (2026-09-11).** The Deepgram half of this model is now
+> measured against the live API. The Claude half is **still estimated** — the
+> Anthropic account has no credit, so zero billed calls have succeeded. Rows are
+> marked accordingly. Nothing below is fabricated; unmeasured rows say so.
+
 All figures are **usage-based**. Fixed infrastructure cost at V1 is $0 beyond a
 free-tier Postgres and a hobby-tier host.
 
@@ -18,23 +23,57 @@ Assumptions, stated so they can be argued with:
 - Per-turn fresh input (rolling state + recent transcript) ≈ 1,500 tokens.
 - Per-turn output ≈ 80 tokens (a spoken question is short).
 
-| Component | Model / rate | Quantity | Cost |
-|---|---|---|---|
-| STT + turn detection | Deepgram Flux `flux-general-en`, $0.0065/min | 30 min | **$0.195** |
-| TTS | Deepgram Aura-2, $0.030/1K chars | 7,400 chars | **$0.222** |
-| Interviewer loop — cached input | Sonnet 5 cache read, $0.20/MTok | 40 × 4,000 = 160K | $0.032 |
-| Interviewer loop — fresh input | Sonnet 5 input, $2.00/MTok | 40 × 1,500 = 60K | $0.120 |
-| Interviewer loop — output | Sonnet 5 output, $10.00/MTok | 40 × 80 = 3.2K | $0.032 |
-| Cache write (once) | Sonnet 5 @ 1.25× input | 4K | $0.010 |
-| **Voice loop subtotal** | | | **$0.611** |
-| Post-interview autopsy — input | Opus 5, $5.00/MTok | ~15K | $0.075 |
-| Post-interview autopsy — output | Opus 5, $25.00/MTok | ~6K | $0.150 |
-| Document extraction (JD + resume) | Haiku 4.5, $1/$5 per MTok | 8K in / 2K out | $0.018 |
-| Storage + egress | S3-compatible | negligible per session | ~$0.001 |
-| **Total per 30-min interview** | | | **≈ $0.86** |
+| Component | Model / rate | Quantity | Cost | Basis |
+|---|---|---|---|---|
+| STT + turn detection | Deepgram Flux `flux-general-en`, $0.0065/min | 30 min | **$0.195** | **confirmed** — see note 1 |
+| TTS | Deepgram Aura-2, $0.030/1K chars | ~6,000 chars | **$0.180** | list price verified; volume still estimated |
+| Interviewer loop — cached input | Sonnet 5 cache read, $0.20/MTok | 40 × 4,000 = 160K | $0.032 | **estimated** |
+| Interviewer loop — fresh input | Sonnet 5 input, $2.00/MTok | 40 × 1,500 = 60K | $0.120 | **estimated** |
+| Interviewer loop — output | Sonnet 5 output, $10.00/MTok | 40 × 80 = 3.2K | $0.032 | **estimated** |
+| Cache write (once) | Sonnet 5 @ 1.25× input | 4K | $0.010 | **estimated** |
+| **Voice loop subtotal** | | | **$0.569** | |
+| Post-interview autopsy — input | Opus 5, $5.00/MTok | ~15K | $0.075 | **estimated** |
+| Post-interview autopsy — output | Opus 5, $25.00/MTok | ~6K | $0.150 | **estimated** |
+| Document extraction (JD + resume) | Haiku 4.5, $1/$5 per MTok | 8K in / 2K out | $0.018 | **estimated** |
+| Storage + egress | S3-compatible | negligible per session | ~$0.001 | estimated |
+| **Total per 30-min interview** | | | **≈ $0.82** | ~30% measured |
 
-A 15-minute interview is roughly **$0.45**; a 60-minute one roughly **$1.65**
+A 15-minute interview is roughly **$0.43**; a 60-minute one roughly **$1.56**
 (the report cost grows sublinearly, the voice cost linearly).
+
+### Note 1 — the STT stream must run for the full wall clock
+
+This was an assumption; it is now a measured constraint. Deepgram Flux drives its
+silence timeout from *received audio*. A probe that simply stopped sending when
+the candidate stopped talking never received an `EndOfTurn` at all — the turn
+hung until the next utterance bled into it. The client must keep streaming
+silence, so STT bills the entire interview duration, not just the talking parts.
+There is no "pause the meter while the interviewer speaks" optimisation.
+
+### Note 2 — barge-in waste is real but negligible
+
+Deepgram keeps synthesising ~0.92 s of speech after `Clear`. Aura bills per
+character submitted, and the characters were committed at `Speak` time, so an
+interruption wastes the unspoken remainder of that question — roughly 75
+characters, about **$0.002**. Not worth engineering against.
+
+### Actual spend on this validation run
+
+Approximately **$0.18** of Deepgram credit across all probes (~8 minutes of
+streamed audio, ~5,000 synthesised characters). Anthropic: **$0.00** — every
+call was rejected for insufficient credit.
+
+### Largest cost drivers, in order
+
+1. **TTS characters (~31% of the voice loop).** Directly controlled by how long
+   the interviewer talks. `MAX_RESPONSE_CHARS` is therefore a cost lever as well
+   as a quality one — and short interviewer turns are what we want anyway.
+2. **STT wall-clock (~34%).** Fixed by interview duration. Not reducible without
+   shortening interviews.
+3. **Claude input tokens (~27%, estimated).** The one with real headroom: prompt
+   caching should move ~4K tokens/turn from $2.00 to $0.20 per MTok. **This is
+   the single most important unverified number in the model** — if the cache is
+   silently missing, the voice loop costs roughly 1.5x the figure above.
 
 ## Comparison against the rejected option
 
@@ -52,7 +91,7 @@ pipeline is cheapest *and* the right shape.
 
 ## What this implies commercially
 
-At $0.86/interview, a "Pro" tier at $20/month supports ~23 interviews/month at
+At $0.82/interview, a "Pro" tier at $20/month supports ~24 interviews/month at
 100% COGS and stays healthy at a 10-interview cap (~43% gross margin before
 infra). A free tier of 1 interview/month costs $0.86 per signup — cheap
 acquisition, but it **must** be metered, which is why `UsageRecord` and the

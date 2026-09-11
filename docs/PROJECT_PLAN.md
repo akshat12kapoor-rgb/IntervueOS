@@ -1,12 +1,17 @@
 # Project Plan
 
-Updated 2026-09-10.
+Updated 2026-09-11.
 
 ## Where this stands
 
-**Phase 0 (discovery + architecture): complete.**
-**Checkpoint 1 (voice prototype): built and tested, but not yet run live —
-blocked on API keys.** See "What is not verified" below.
+**Phase 0: complete.**
+**Checkpoint 1: voice transport VALIDATED against live providers. Interviewer
+behaviour NOT validated — the Anthropic account has no credit.**
+
+Verdict: **CONDITIONAL PASS.** The voice path works and its weaknesses are
+measured and understood. Nothing is known about whether the interviewer behaves
+like an interviewer, because zero Claude calls have succeeded. Phase 1 must not
+start until Step 2 runs.
 
 ## What exists
 
@@ -43,25 +48,46 @@ blocked on API keys.** See "What is not verified" below.
 - **Server boots**; `/health`, `/`, and all static assets return 200; the
   WebSocket refuses cleanly and legibly when credentials are missing.
 
-## What is NOT verified
+## Live validation, 2026-09-11
 
-**No live voice interview has been run.** There are no `DEEPGRAM_API_KEY` or
-`ANTHROPIC_API_KEY` credentials in this environment, so every claim about
-end-to-end latency, real turn-detection quality, and how natural the
-conversation actually feels is **unmeasured**. The vendor providers are written
-against the published protocols and have never exchanged a packet.
+Deepgram: working. Full results in `docs/LATENCY.md`. Headlines:
 
-Specifically unverified:
-- Real end-to-end latency (`EndOfTurn` → first audible word).
-- Real speculation hit rate — the number that decides whether ADR-002's eager
-  path is worth its wasted tokens.
-- Whether browser echo cancellation is enough to prevent the interviewer's own
-  voice triggering false barge-ins on laptop speakers.
-- Whether Aura-2 sounds like a person a candidate would take seriously.
-- Whether Claude at `max_tokens=160` with thinking off holds the interviewer
-  persona (Principle 5) under pressure, or drifts into coaching.
+- End-of-turn fired correctly 8/8, always on model confidence, never on timeout.
+- Speculative generation fired 8/8 and matched the final transcript 8/8.
+- EOT lag median ~1.3 s and **structurally untunable** — the full threshold
+  range moves it 235 ms.
+- TTS time-to-first-byte 334 ms, not the ~90 ms the vendor publishes.
+- Barge-in is perceptually immediate; the vendor's 0.92 s post-`Clear` tail is
+  absorbed by the client-side drop, which the measurement proved necessary.
+- Projected total response latency ~1.8-2.0 s, pending the LLM term.
+- STT mishears domain vocabulary ("Redis" -> "reddish", "sharded" -> "resorted")
+  and Flux **silently ignores** `keyterm`.
 
-Every one of those is answerable within an hour of getting keys.
+## What is STILL NOT verified
+
+**Anthropic has zero credit.** `models.list` succeeds, so the key is valid and
+authenticated; every billed call returns HTTP 400 "credit balance is too low".
+That blocks:
+
+- **All of Step 2 — the entire interview-intelligence evaluation.** The 12
+  adversarial cases have not been run. Nothing is known about whether the
+  interviewer coaches, reveals answers, cross-examines, notices contradictions,
+  or holds its persona.
+- LLM time to first token — the one unmeasured term in the latency budget.
+- Whether prompt caching actually engages. Flagged in COST_MODEL.md as the
+  single most important unverified number: if the cache silently misses, the
+  voice loop costs ~1.5x the modelled figure.
+- Real interviewer response length, and therefore real TTS spend.
+
+**Needs a human at a keyboard** (I cannot speak into a microphone):
+
+- A real interview with a human voice — genuine disfluencies, background noise,
+  trailing off mid-sentence. All STT and EOT numbers above are from synthetic
+  speech and are a best case.
+- The laptop-speaker echo test. Whether browser AEC prevents the interviewer's
+  own voice triggering false barge-ins is **completely unmeasured**; the false
+  barge-in rate is currently unknown, not zero.
+- Perceived TTS quality. `artifacts/sample_exchange.wav` is provided for this.
 
 ## Phases
 
@@ -80,12 +106,16 @@ Every one of those is answerable within an hour of getting keys.
 
 ## Immediate next steps
 
-1. Add the two API keys and run a live 10-minute interview (see README).
-2. Record the measured numbers in COST_MODEL.md and this file — replace the
-   estimates with observations.
-3. Tune `EOT_THRESHOLD` / `EAGER_EOT_THRESHOLD` against the recording.
-4. Only then start Phase 1.
+1. **Fund the Anthropic account.** Everything else is downstream.
+2. Run Step 2 — the 12 adversarial interview-intelligence cases.
+3. Measure LLM TTFT and confirm the prompt cache engages
+   (`usage.cache_read_input_tokens` > 0 from turn two).
+4. Human voice test with headphones, then with laptop speakers, to get a real
+   false-barge-in rate.
+5. Adopt `EOT_THRESHOLD=0.5` / `EAGER_EOT_THRESHOLD=0.3` — measured as free.
+6. Only then decide on Phase 1.
 
-Nothing in Phase 1 should be built before step 1 happens. If the voice loop
-does not feel human, the architecture above is the thing that changes, and
-everything built on top of it would be rework.
+If Step 2 shows the interviewer coaches, reveals answers, or cannot
+cross-examine, that is a prompt and interview-engine problem and Phase 1 waits.
+If total latency lands above ~2.5 s, ADR-002 needs revisiting — and the sweep
+shows that means changing the stack, not the config.

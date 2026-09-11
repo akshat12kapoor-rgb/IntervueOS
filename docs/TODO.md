@@ -2,13 +2,46 @@
 
 Ordered by what unblocks the most.
 
-## Blocking
+## Blocking Phase 1
 
-- [ ] **Add `DEEPGRAM_API_KEY` and `ANTHROPIC_API_KEY` and run a live 10-minute
-      interview.** Everything below is speculative until this happens.
-- [ ] Measure and record: end-to-end latency, speculation hit rate, false
-      barge-in rate on laptop speakers vs headphones.
-- [ ] Tune `EOT_THRESHOLD` / `EAGER_EOT_THRESHOLD` against the recording.
+- [ ] **Fund the Anthropic account.** Key is valid and authenticates; the balance
+      is zero, so every billed call 400s. This blocks the entire
+      interview-intelligence evaluation, which is the more important half of
+      Checkpoint 1.
+- [ ] Run the 12 adversarial cases (docs/AI_EVALUATION.md) against live Claude.
+- [ ] Measure LLM TTFT; fill the one gap in docs/LATENCY.md.
+- [ ] Verify prompt caching engages — assert `cache_read_input_tokens > 0` from
+      turn two. If it silently misses, voice-loop cost is ~1.5x the model.
+- [ ] **Human voice test** (needs a person): headphones first, then laptop
+      speakers, to get a real false-barge-in rate. Currently unknown, not zero.
+- [ ] Judge `artifacts/sample_exchange.wav` — is this voice credible as an
+      interviewer?
+
+## Adopt now (measured, free)
+
+- [ ] `EOT_THRESHOLD=0.5`, `EAGER_EOT_THRESHOLD=0.3` — saves ~235 ms with zero
+      premature cutoffs across the sweep.
+
+## Speech recognition accuracy on domain vocabulary
+
+Flux mishears the exact words an interview is about, and `keyterm` is silently
+ignored. In rough order of cost:
+
+- [ ] Try the mid-stream `Configure` control message — the on-the-fly config
+      announcement mentions keyterms, even though the query parameter does nothing.
+- [ ] Cheap post-STT normalisation: a Haiku pass that repairs transcripts against
+      the JD/resume vocabulary we already extract. Adds a hop to the latency budget.
+- [ ] Evaluate Nova-3 + an external turn detector (LiveKit `turn-detector`).
+      Nova-3 supports keyterm boosting but has no turn model, so this trades the
+      thing Flux is best at for the thing it is worst at. Measure before moving.
+
+## Latency, if ~2 s proves too slow
+
+- [ ] Measured: threshold tuning cannot fix it (docs/LATENCY.md). Changing this
+      means changing the stack.
+- [ ] A/B Cartesia Sonic against Aura-2's measured 334 ms TTFB.
+- [ ] Re-price OpenAI Realtime / Gemini Live now that the cascaded path has real
+      numbers to compare against, rather than the estimates in ADR-001.
 
 ## Known gaps in the prototype
 

@@ -1,0 +1,98 @@
+{
+  "config": {
+    "stt_model": "flux-general-en",
+    "tts_model": "aura-2-thalia-en",
+    "eot_threshold": 0.7,
+    "eager_eot_threshold": 0.5,
+    "eot_timeout_ms": 4000
+  },
+  "tts": {
+    "first_utterance_on_new_socket_ms": 335,
+    "steady_state_ttfb_ms": {
+      "n": 5,
+      "median": 334,
+      "min": 329,
+      "max": 336
+    },
+    "mean_chars": 57
+  },
+  "stt": {
+    "cases": [
+      {
+        "label": "fluent_technical",
+        "audio_s": 10.96,
+        "reference": "I built the payments service on Postgres with an outbox table, and we published events to Kafka from a separate relay process so the write and the publish shared a transaction.",
+        "transcript": "I built the payment service on Postgres with an outbox table, and we published events to Kafka from a separate relay process. So the right and the publish shared a transaction.",
+        "wer": 0.065,
+        "eot_count": 1,
+        "eot_after_audio_end_ms": 2188,
+        "eager_count": 1,
+        "turn_resumed_count": 0,
+        "eager_lead_ms": 639,
+        "eager_transcript_matched_final": true,
+        "eot_confidence": 0.722,
+        "eot_trigger": "model"
+      },
+      {
+        "label": "hesitant_with_pauses",
+        "audio_s": 13.76,
+        "reference": "So, um, the tricky part was... idempotency. We had a, a dedupe key on the consumer side, and, uh, we stored it in Redis with a twenty four hour TTL.",
+        "transcript": "So the tricky part was idempotency. We had a a dedupe key on the consumer side, and, uh, we stored it in reddish with a twenty four hour TTL.",
+        "wer": 0.067,
+        "eot_count": 1,
+        "eot_after_audio_end_ms": 1038,
+        "eager_count": 2,
+        "turn_resumed_count": 1,
+        "eager_lead_ms": 12030,
+        "eager_transcript_matched_final": true,
+        "eot_confidence": 0.785,
+        "eot_trigger": "model"
+      },
+      {
+        "label": "short_answer",
+        "audio_s": 3.04,
+        "reference": "About four hundred requests per second at peak.",
+        "transcript": "About four hundred requests per second at peak.",
+        "wer": 0.0,
+        "eot_count": 1,
+        "eot_after_audio_end_ms": 1018,
+        "eager_count": 1,
+        "turn_resumed_count": 0,
+        "eager_lead_ms": 80,
+        "eager_transcript_matched_final": true,
+        "eot_confidence": 0.746,
+        "eot_trigger": "model"
+      },
+      {
+        "label": "mid_sentence_pause",
+        "audio_s": 12.4,
+        "reference": "The main tradeoff was between consistency and latency, and... honestly we chose latency because the product team wanted sub two hundred millisecond writes.",
+        "transcript": "The main trade off was between consistency and latency, and, honestly, we chose latency because the product team wanted sub two hundred millisecond writes.",
+        "wer": 0.087,
+        "eot_count": 1,
+        "eot_after_audio_end_ms": 1205,
+        "eager_count": 1,
+        "turn_resumed_count": 0,
+        "eager_lead_ms": 210,
+        "eager_transcript_matched_final": true,
+        "eot_confidence": 0.742,
+        "eot_trigger": "model"
+      },
+      {
+        "label": "numbers_and_jargon",
+        "audio_s": 10.64,
+        "reference": "We sharded by tenant ID across sixteen Postgres instances, ran PgBouncer in transaction mode, and kept p99 under one hundred and twenty milliseconds.",
+        "transcript": "We charted by tenant ID across sixteen Postgres instances, ran pgbouncer in transaction mode, and kept p ninety nine under one hundred and twenty milliseconds.",
+        "wer": 0.174,
+        "eot_count": 1,
+        "eot_after_audio_end_ms": 977,
+        "eager_count": 1,
+        "turn_resumed_count": 0,
+        "eager_lead_ms": 58,
+        "eager_transcript_matched_final": true,
+        "eot_confidence": 0.751,
+        "eot_trigger": "model"
+      }
+    ]
+  }
+}

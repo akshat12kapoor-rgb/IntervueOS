@@ -34,11 +34,12 @@ class Config:
     tts_sample_rate: int = field(default_factory=lambda: _i("TTS_SAMPLE_RATE", 24000))
 
     # --- turn taking (Deepgram Flux) ---
-    eot_threshold: float = field(default_factory=lambda: _f("EOT_THRESHOLD", 0.7))
-    """Confidence required to declare the turn over. Higher = fewer false
-    endings, but the interviewer waits longer. 0.5-0.9."""
+    eot_threshold: float = field(default_factory=lambda: _f("EOT_THRESHOLD", 0.5))
+    """Confidence required to declare the turn over. 0.5-0.9.
+    Measured 2026-09-11: 0.5 is ~235 ms faster than the 0.7 default with zero
+    premature cutoffs across the sweep. See docs/LATENCY.md."""
 
-    eager_eot_threshold: float = field(default_factory=lambda: _f("EAGER_EOT_THRESHOLD", 0.5))
+    eager_eot_threshold: float = field(default_factory=lambda: _f("EAGER_EOT_THRESHOLD", 0.3))
     """Confidence required to *start drafting*. Lower = more speculation, more
     wasted tokens, lower latency when the guess lands. 0.3-0.9."""
 

@@ -1,0 +1,21 @@
+{
+  "n": 6,
+  "perceived_silence_ms": 0,
+  "perceived_silence_note": "The provider raises its drop flag before sending Clear, so the caller receives no further audio from the instant barge-in is detected. Combined with the browser worklet flush measured at 11 ms, the candidate stops hearing the interviewer effectively immediately.",
+  "vendor_audio_tail_after_clear_ms": {
+    "median": 296,
+    "min": 240,
+    "max": 336
+  },
+  "vendor_audio_tail_after_clear_bytes": {
+    "median": 44160,
+    "min": 42240,
+    "max": 67200
+  },
+  "cleared_ack_ms": {
+    "median": 319,
+    "min": 286,
+    "max": 336
+  },
+  "wasted_audio_seconds_per_bargein": 0.92
+}

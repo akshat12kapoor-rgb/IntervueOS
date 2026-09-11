@@ -1,0 +1,134 @@
+[
+  {
+    "eot_threshold": 0.7,
+    "eager_eot_threshold": 0.5,
+    "rows": [
+      {
+        "case": "fluent",
+        "eot_lag_ms": 3759,
+        "premature": false,
+        "wer": 0.032,
+        "trigger": "model",
+        "eager_lead_ms": 480,
+        "eager_matched": true
+      },
+      {
+        "case": "hesitant",
+        "eot_lag_ms": 1322,
+        "premature": false,
+        "wer": 0.1,
+        "trigger": "model",
+        "eager_lead_ms": 198,
+        "eager_matched": true
+      },
+      {
+        "case": "pauses_midway",
+        "eot_lag_ms": 1530,
+        "premature": false,
+        "wer": 0.13,
+        "trigger": "model",
+        "eager_lead_ms": 31,
+        "eager_matched": true
+      }
+    ]
+  },
+  {
+    "eot_threshold": 0.6,
+    "eager_eot_threshold": 0.4,
+    "rows": [
+      {
+        "case": "fluent",
+        "eot_lag_ms": 1600,
+        "premature": false,
+        "wer": 0.032,
+        "trigger": "model",
+        "eager_lead_ms": 267,
+        "eager_matched": true
+      },
+      {
+        "case": "hesitant",
+        "eot_lag_ms": 1193,
+        "premature": false,
+        "wer": 0.1,
+        "trigger": "model",
+        "eager_lead_ms": 160,
+        "eager_matched": true
+      },
+      {
+        "case": "pauses_midway",
+        "eot_lag_ms": 1525,
+        "premature": false,
+        "wer": 0.13,
+        "trigger": "model",
+        "eager_lead_ms": 42,
+        "eager_matched": true
+      }
+    ]
+  },
+  {
+    "eot_threshold": 0.5,
+    "eager_eot_threshold": 0.3,
+    "rows": [
+      {
+        "case": "fluent",
+        "eot_lag_ms": 1510,
+        "premature": false,
+        "wer": 0.032,
+        "trigger": "model",
+        "eager_lead_ms": 325,
+        "eager_matched": true
+      },
+      {
+        "case": "hesitant",
+        "eot_lag_ms": 1105,
+        "premature": false,
+        "wer": 0.1,
+        "trigger": "model",
+        "eager_lead_ms": 3,
+        "eager_matched": true
+      },
+      {
+        "case": "pauses_midway",
+        "eot_lag_ms": 1295,
+        "premature": false,
+        "wer": 0.13,
+        "trigger": "model",
+        "eager_lead_ms": 270,
+        "eager_matched": true
+      }
+    ]
+  },
+  {
+    "eot_threshold": 0.5,
+    "eager_eot_threshold": 0.0,
+    "rows": [
+      {
+        "case": "fluent",
+        "eot_lag_ms": 1588,
+        "premature": false,
+        "wer": 0.032,
+        "trigger": "model",
+        "eager_lead_ms": null,
+        "eager_matched": false
+      },
+      {
+        "case": "hesitant",
+        "eot_lag_ms": 1220,
+        "premature": false,
+        "wer": 0.1,
+        "trigger": "model",
+        "eager_lead_ms": null,
+        "eager_matched": false
+      },
+      {
+        "case": "pauses_midway",
+        "eot_lag_ms": 1266,
+        "premature": false,
+        "wer": 0.13,
+        "trigger": "model",
+        "eager_lead_ms": null,
+        "eager_matched": false
+      }
+    ]
+  }
+]

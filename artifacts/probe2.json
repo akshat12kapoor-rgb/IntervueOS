@@ -1,0 +1,64 @@
+{
+  "baseline": {
+    "numbers_and_jargon": {
+      "transcript": "resorted by tenant ID across sixteen Postgres instances. RanPgBouncer in transaction mode and kept p ninety nine under one hundred and twenty milliseconds.",
+      "wer": 0.304,
+      "eot_lag_ms": 1485,
+      "trigger": "model"
+    },
+    "hesitant_with_pauses": {
+      "transcript": "So the tricky part was idempotency. We had a dedup key on the consumer side, and, uh, we stored it in Redis with a twenty four hour TTL.",
+      "wer": 0.1,
+      "eot_lag_ms": 1116,
+      "trigger": "model"
+    },
+    "fluent_technical": {
+      "transcript": "I built the payment service on Postgres with an outbox table, and we published events to Kafka from a separate relay process, so the write and the publish shared a transaction.",
+      "wer": 0.032,
+      "eot_lag_ms": 1361,
+      "trigger": "model"
+    }
+  },
+  "with_keyterms": {
+    "numbers_and_jargon": {
+      "transcript": "resorted by tenant ID across sixteen Postgres instances. RanPgBouncer in transaction mode and kept p ninety nine under one hundred and twenty milliseconds.",
+      "wer": 0.304,
+      "eot_lag_ms": 1490,
+      "trigger": "model"
+    },
+    "hesitant_with_pauses": {
+      "transcript": "So the tricky part was idempotency. We had a dedup key on the consumer side, and, uh, we stored it in Redis with a twenty four hour TTL.",
+      "wer": 0.1,
+      "eot_lag_ms": 1108,
+      "trigger": "model"
+    },
+    "fluent_technical": {
+      "transcript": "I built the payment service on Postgres with an outbox table, and we published events to Kafka from a separate relay process, so the write and the publish shared a transaction.",
+      "wer": 0.032,
+      "eot_lag_ms": 1259,
+      "trigger": "model"
+    }
+  },
+  "keyterms": [
+    "Redis",
+    "PgBouncer",
+    "Postgres",
+    "sharded",
+    "Kafka",
+    "idempotency",
+    "p99",
+    "outbox",
+    "dedupe",
+    "TTL",
+    "tenant"
+  ],
+  "bargein": {
+    "n": 5,
+    "vendor_silence_after_clear_ms": {
+      "median": 0,
+      "min": 0,
+      "max": 0
+    },
+    "note": "time from Clear to the last audio byte the vendor sent; bytes after Clear are dropped client-side by the provider's _dropping flag"
+  }
+}
