@@ -165,9 +165,13 @@ only the rolling state.
 
 ## ADR-005 — Python-only prototype, no Node
 
-**Status:** ACCEPTED (reversible, low stakes)
+**Status:** ACCEPTED, with a correction 2026-11-24 — Node v26 *is* now installed
+on this machine, so the stated premise no longer holds. The decision stands
+anyway: the prototype still requires nothing but the venv, which is the property
+worth keeping. Node is now used only by `video/` (Remotion), which is
+documentation and not part of the running system.
 
-Node is not installed on this machine. The prototype is FastAPI serving one
+Node was not installed on this machine when this was written. The prototype is FastAPI serving one
 static HTML file, so it runs with nothing but the venv. The production frontend
 will be Next.js (per the target architecture) — this only affects the prototype.
 
