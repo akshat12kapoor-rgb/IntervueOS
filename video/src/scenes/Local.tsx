@@ -7,8 +7,8 @@ export const Local: React.FC = () => (
     <Kicker color={C.blue}>08 — running it yourself</Kicker>
     <Title>From clone to live interview</Title>
 
-    <Appear at={0.8} style={{ marginTop: 26 }}>
-      <Code size={22} highlight={[8]}>{`git clone https://github.com/akshat12kapoor-rgb/IntervueOS
+    <Appear at={0.8} style={{ marginTop: 18 }}>
+      <Code size={21} highlight={[8]}>{`git clone https://github.com/akshat12kapoor-rgb/IntervueOS
 cd IntervueOS
 
 python3 -m venv .venv
@@ -19,7 +19,7 @@ cp .env.example .env        # then paste your two keys
 cd prototype && ../.venv/bin/python -m uvicorn server:app --port 8000`}</Code>
     </Appear>
 
-    <div style={{ display: "flex", gap: 22, marginTop: 28 }}>
+    <div style={{ display: "flex", gap: 22, marginTop: 22 }}>
       <Appear at={2.4} style={{ flex: 1 }}>
         <Card accent={C.green}>
           <div style={{ fontSize: 25, fontWeight: 600, marginBottom: 10 }}>Two keys, both free to start</div>
@@ -54,13 +54,15 @@ cd prototype && ../.venv/bin/python -m uvicorn server:app --port 8000`}</Code>
     </div>
 
     <Appear at={4.6}>
-      <div style={{ fontSize: 29, color: C.text, marginTop: 30, lineHeight: 1.5 }}>
+      <div style={{ fontSize: 28, color: C.text, marginTop: 24, lineHeight: 1.45 }}>
         Then open <span style={{ fontFamily: MONO, color: C.blue }}>http://127.0.0.1:8000</span>,
-        paste a job description and your resume, and press Start. Tests:{" "}
-        <span style={{ fontFamily: MONO }}>.venv/bin/python -m pytest</span> — 33 of them, ~12 s,
-        no network needed.
+        paste a job description and your resume, and press Start.
       </div>
     </Appear>
-    <Note at={6}>Python 3.12+. Node is not required to run the prototype.</Note>
+    <Note at={5.6}>
+      Python 3.12+, and Node is not required. Tests:{" "}
+      <span style={{ fontFamily: MONO }}>.venv/bin/python -m pytest</span> — 96 of them, ~17 s,
+      no network and no API keys.
+    </Note>
   </Scene>
 );
