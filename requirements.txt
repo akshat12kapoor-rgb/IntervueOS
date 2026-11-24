@@ -6,4 +6,10 @@ pytest-asyncio==1.4.0
 pytest==9.1.1
 python-dotenv==1.2.3
 uvicorn[standard]==0.52.4
+# Local voice-activity detection, needed only by STT_PROVIDER=groq (ADR-009).
+# The `-wheels` fork rather than `webrtcvad` itself: upstream ships only a
+# source tarball that needs a C toolchain, while this publishes prebuilt wheels
+# (29 KB, cp314 included). Chosen over Silero/torch for the same reason the
+# rest of the prototype has nine dependencies — see ADR-009.
+webrtcvad-wheels==2.0.14.post1
 websockets==17.1

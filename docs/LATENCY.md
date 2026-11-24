@@ -1,6 +1,11 @@
 # Measured Latency
 
-All figures from live provider calls on 2026-09-11. Candidate speech is
+> **Two stacks are measured here.** Everything from "The response path" down to
+> "Speech recognition quality" is the **Deepgram** stack (2026-09-11), which is
+> still the default. The **Groq free-tier** stack (ADR-009) is measured in the
+> final section. Read both before changing `STT_PROVIDER`.
+
+All Deepgram figures from live provider calls on 2026-09-11. Candidate speech is
 **synthetic** (Deepgram Aura, a second voice) streamed into Flux in real time at
 80 ms/chunk, exactly as the browser does.
 
@@ -112,3 +117,130 @@ than as a transcription error.
 **`keyterm` does not fix this.** Flux accepts the parameter and silently ignores
 it: an A/B over identical audio produced byte-identical transcripts in all three
 cases. Options are in TODO.md.
+
+---
+
+# Groq free-tier stack (ADR-009)
+
+Measured 2026-11-24 via `tools/probe_groq_audio.py`, which drives the shipped
+`GroqWhisperStt` / `GroqOrpheusTts` classes — not a reimplementation — against
+the live API, streaming audio at 80 ms/chunk exactly as the browser does.
+
+Same caveat as above, and more so: the input is a clean `say`-generated
+recording, so the VAD has an easy job. A human in a noisy room will do worse,
+and the VAD will do *disproportionately* worse than Flux did, because Flux had
+a speech model's acoustic robustness and this has an energy-and-spectrum gate.
+
+## End-of-turn lag
+
+This is the headline number. It is measured from the last chunk containing
+speech to the moment `END_OF_TURN` is yielded, so it includes **both** the VAD's
+silence wait and the Whisper round trip — the candidate experiences them as one
+silence. Three runs per case, `whisper-large-v3`, `VAD_END_SILENCE_MS=700`.
+
+| Answer length | Runs (ms) | Median EOT lag | of which Whisper | vs Flux's 1295 ms |
+|---|---|---|---|---|
+| 5.9 s | 1262 / 1157 / 1034 | **1157 ms** | 421 ms | **138 ms faster** |
+| 15.8 s | 1800 / 1603 / 1586 | **1603 ms** | 866 ms | 308 ms slower |
+
+The structure is `700 ms VAD silence + Whisper round trip`, and the Whisper leg
+grows with the length of the answer because the whole turn is transcribed in one
+request. So this stack beats Flux on short answers and loses on long ones, and
+the crossover is around an 8-second answer.
+
+That is a more favourable result than expected, and it is worth being clear
+about *why*: Flux's 1295 ms was shown to be structural and untunable (the
+threshold sweep above recovers only ~235 ms across its whole range), whereas the
+700 ms here is a config value. `VAD_END_SILENCE_MS` is a real lever in a way
+`eot_threshold` never was — but it is a lever with teeth, since the silence is
+the only evidence a VAD has.
+
+## Model and prompt comparison
+
+One run each, 15.8 s utterance.
+
+| Model | `prompt` | EOT lag | Whisper leg |
+|---|---|---|---|
+| `whisper-large-v3` | yes | 1395 ms | 659 ms |
+| `whisper-large-v3` | no | 1688 ms | 950 ms |
+| `whisper-large-v3-turbo` | yes | 1581 ms | 843 ms |
+| `whisper-large-v3-turbo` | no | 2317 ms | 1580 ms |
+
+`large-v3` beat `-turbo` on latency in every paired run here, which inverts the
+vendor's own price/performance framing — and since both are free with identical
+rate limits, there is no reason to prefer turbo. `GROQ_STT_MODEL` defaults to
+`large-v3`. The spread between runs is wide enough that the model ordering
+should be re-checked before anyone leans on it.
+
+## Speech recognition quality — the one clear win
+
+Term-dense utterance, WER against reference, `prompt` carrying the role, topics
+and a slice of the job description. The reference terms are exactly the ones
+Flux mangles.
+
+| Case | WER | Transcript of the hard terms |
+|---|---|---|
+| `turbo`, no prompt | 0.438 | "redisk hash", "PG Bouncer", "page 99" |
+| `turbo` + prompt | 0.188 | "redis cash", **"PgBouncer"**, "page 99" |
+| `large-v3` + prompt | **0.125** | **"Redis cache"**, **"PgBouncer"**, "page 99" |
+
+**This is the thing Deepgram could not do.** Flux's `keyterm` is accepted and
+silently ignored; Whisper's `prompt` measurably moves the words that matter,
+from a hint built out of the session's own job description (`server._term_hint`).
+`p99` survives as "page 99" in every case — Flux rendered it "p ninety nine", so
+neither stack handles it and it stays in TODO.md.
+
+## What losing speculation costs
+
+`EAGER_END_OF_TURN` is never emitted (see `_endpointer.py` for why a VAD cannot
+honestly produce it), so `server.py` sets `SessionConfig.speculate=False` and
+the orchestrator pays the full LLM time-to-first-token at end-of-turn instead of
+the measured **210-270 ms** head start. Taking the 270 ms best case:
+
+    candidate stops → first audible word
+      Deepgram:  1295 (EOT) + max(0, 470 − 270) + 334 (TTS) + 10  ≈ 1.84 s
+      Groq STT:  1157 (EOT, short answer) + 470 + 334 + 10        ≈ 1.97 s
+      Groq STT:  1603 (EOT, long answer)  + 470 + 334 + 10        ≈ 2.42 s
+
+using the 470 ms Groq LLM time-to-first-token from ADR-008 and Aura-2's measured
+334 ms TTS. **Net cost of the STT swap: ~130 ms on short answers, ~580 ms on
+long ones.** The long-answer case crosses the 2-second mark that
+docs/PROJECT_PLAN.md calls noticeably slow.
+
+## Orpheus TTS — NOT MEASURED
+
+**No latency number for Groq TTS exists.** Every request returns:
+
+    400 model_terms_required — The model `canopylabs/orpheus-v1-english`
+    requires terms acceptance. Please have the org admin accept the terms at
+    https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english
+
+This is a one-time click by the account owner in the Groq console, which is not
+something this work could do on their behalf. `GroqOrpheusTts` is written,
+unit-tested against a faked client, and wired into `server.py`; it has never
+made a successful live call. **Treat the TTS half of ADR-009 as unvalidated.**
+
+What is known from the vendor docs rather than measurement, and why the number
+is unlikely to be good:
+
+* The response is **one complete WAV body** — no streaming. Aura-2's 334 ms is a
+  time-to-*first-frame* while synthesis continues; Orpheus's equivalent is the
+  full synthesis time of the first sentence, so it cannot beat Aura-2 on the
+  same text and will be worse the longer the first sentence is.
+* `input` caps at **200 characters**, so a 400-character response is 2-3
+  sequential requests.
+* **10 requests/minute.** At 2-3 requests per interviewer turn this is the
+  binding constraint on the whole free pipeline, not latency. See
+  docs/COST_MODEL.md.
+
+To fill this section in, accept the model terms and run:
+
+    .venv/bin/python tools/probe_groq_audio.py <16k-mono.wav>
+
+## Recommended operating point
+
+`STT_PROVIDER=groq` with `TTS_PROVIDER=deepgram`. It takes ~52% off the
+Deepgram bill ($0.375 → $0.180 per 30-minute interview), is fully measured,
+improves transcription of the technical terms the product is about, and costs
+~130-580 ms of response latency. Going all-Groq additionally depends on an
+unvalidated TTS path with a rate limit that permits roughly one interview a day.
