@@ -36,9 +36,9 @@ cd prototype && ../.venv/bin/python -m uvicorn server:app --port 8000`}</Code>
           <div style={{ fontFamily: MONO, fontSize: 21, color: C.dim, lineHeight: 1.5 }}>
             GET /health
             <br />
-            → {`{"ok":true,"llm_provider":"groq",`}
+            → {`{"ok":true,"providers":{...},`}
             <br />
-            &nbsp;&nbsp;&nbsp;{`"llm_key":true, ...}`}
+            &nbsp;&nbsp;&nbsp;{`"keys":{"groq_api_key":true, ...}}`}
           </div>
         </Card>
       </Appear>

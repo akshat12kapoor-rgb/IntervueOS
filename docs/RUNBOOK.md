@@ -22,6 +22,8 @@ because you cannot copy a command out of a video.
 | `DEEPGRAM_API_KEY` | https://console.deepgram.com | $200 trial credit |
 
 One Deepgram key covers both speech-to-text (Flux) and text-to-speech (Aura-2).
+The Deepgram key stops being required only if you move *both* audio stages to
+Groq, which the recommended setup below deliberately does not do.
 
 ### Setup
 
@@ -58,12 +60,22 @@ curl -s http://127.0.0.1:8000/health
 ```
 
 ```json
-{"ok":true,"deepgram_key":true,"llm_provider":"groq","llm_key":true,
- "models":{"llm":"openai/gpt-oss-120b","stt":"flux-general-en","tts":"aura-2-thalia-en"}}
+{"ok":true,
+ "providers":{"stt":"deepgram","tts":"deepgram","llm":"groq"},
+ "keys":{"deepgram_api_key":true,"groq_api_key":true},
+ "models":{"llm":"openai/gpt-oss-120b","stt":"flux-general-en","tts":"aura-2-thalia-en"},
+ "free_tier":false,"speculative":true}
 ```
 
-If `llm_key` or `deepgram_key` is `false`, `.env` was not picked up — check you
-are running from a directory where `python-dotenv` can find it.
+`keys` lists only the credentials your chosen providers actually need, so its
+contents change with `STT_PROVIDER` / `TTS_PROVIDER` / `LLM_PROVIDER`. If any
+value is `false`, that key is missing from `.env` — or `.env` was not picked up
+at all, which you can check by confirming you are running from a directory where
+`python-dotenv` can find it.
+
+`speculative` reports whether speculative generation is active. It is `true`
+only with `STT_PROVIDER=deepgram`, because it needs Flux's `EagerEndOfTurn`
+(ADR-009). `free_tier` is `true` when all three stages are on Groq.
 
 ### Run the tests
 
@@ -71,10 +83,11 @@ are running from a directory where `python-dotenv` can find it.
 .venv/bin/python -m pytest
 ```
 
-33 tests, ~12 seconds, **no network and no API keys needed**. The vendor
+96 tests, ~17 seconds, **no network and no API keys needed**. The vendor
 providers are swapped for scripted doubles, so turn-taking is tested
-deterministically. The transport suite is parametrised over both LLM backends,
-so no test ever reaches a live API.
+deterministically. The transport suite is parametrised over five provider
+combinations — including the mixed ones — with every provider class patched, so
+no test ever reaches a live API.
 
 ---
 
@@ -87,13 +100,20 @@ vendor string appears anywhere else in the codebase.
 
 | Variable | Default | Notes |
 |---|---|---|
-| `DEEPGRAM_API_KEY` | — | Required. STT + TTS. |
-| `GROQ_API_KEY` | — | Required when `LLM_PROVIDER=groq`. |
+| `DEEPGRAM_API_KEY` | — | Required unless *both* `STT_PROVIDER` and `TTS_PROVIDER` are `groq`. |
+| `GROQ_API_KEY` | — | Required when any stage is `groq`. One key covers STT, TTS and LLM. |
 | `ANTHROPIC_API_KEY` | — | Required only when `LLM_PROVIDER=anthropic`. |
-| `LLM_PROVIDER` | `groq` | `groq` or `anthropic`. Switches backend, no code change. |
+| `LLM_PROVIDER` | `groq` | `groq` or `anthropic`. |
+| `STT_PROVIDER` | `deepgram` | `deepgram` (Flux) or `groq` (Whisper + local VAD). See below. |
+| `TTS_PROVIDER` | `deepgram` | `deepgram` (Aura-2) or `groq` (Orpheus — rejected, ADR-009). |
 | `LLM_MODEL` | `openai/gpt-oss-120b` | Also `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`. |
-| `STT_MODEL` | `flux-general-en` | Deepgram Flux. |
-| `TTS_MODEL` | `aura-2-thalia-en` | Deepgram Aura-2. |
+| `STT_MODEL` | `flux-general-en` | Deepgram Flux. Used when `STT_PROVIDER=deepgram`. |
+| `TTS_MODEL` | `aura-2-thalia-en` | Deepgram Aura-2. Used when `TTS_PROVIDER=deepgram`. |
+| `GROQ_STT_MODEL` | `whisper-large-v3` | Used when `STT_PROVIDER=groq`. Also `whisper-large-v3-turbo`. |
+| `GROQ_TTS_MODEL` | `canopylabs/orpheus-v1-english` | Used when `TTS_PROVIDER=groq`. |
+| `GROQ_TTS_VOICE` | `autumn` | `autumn`/`diana`/`hannah` (F), `austin`/`daniel`/`troy` (M). |
+
+Each stage switches independently, and none of it needs a code change.
 
 To see which models your Groq key can actually reach:
 
@@ -112,6 +132,57 @@ To see which models your Groq key can actually reach:
 The `0.5 / 0.3` defaults are measured, not guessed — see `docs/LATENCY.md`.
 They are ~235 ms faster than the vendor defaults with zero premature cutoffs
 across the sweep.
+
+These three are read **only** when `STT_PROVIDER=deepgram`.
+
+### Recommended setup: free speech-to-text
+
+    STT_PROVIDER=groq
+    TTS_PROVIDER=deepgram
+
+This is the recommended configuration (ADR-009), though not the shipped default.
+It moves speech-to-text onto Groq's free tier and keeps Deepgram for the voice,
+taking **52% off the Deepgram bill** — $0.375 → $0.180 per 30-minute interview —
+which stretches the $200 trial credit from ~530 interviews to ~1,100.
+
+Measured trade-offs, all of them in `docs/LATENCY.md`:
+
+| | Effect |
+|---|---|
+| End-of-turn, answers under ~8 s | **faster** than Flux (1157 ms vs 1295 ms) |
+| End-of-turn, answers over ~8 s | slower (1603 ms at a 15.8 s answer) |
+| Technical-term accuracy | **better** — WER 0.438 → 0.125 via Whisper's `prompt` |
+| Speculative generation | **lost** — a VAD cannot produce `EagerEndOfTurn` |
+| Net response latency | ~130 ms worse short, ~580 ms worse long |
+
+**One caveat worth taking seriously.** Every one of those numbers came from clean
+synthetic speech. That is the easiest possible input for a voice-activity
+detector, and `webrtcvad` is weakest exactly where it is unrepresentative —
+background noise and far-field microphones. Expect worse in a real room, treat
+`VAD_AGGRESSIVENESS` and `VAD_END_SILENCE_MS` as the first things to tune, and
+note that the headphones advice above matters more here than on the Deepgram
+path.
+
+`TTS_PROVIDER=groq` selects Orpheus, which is **rejected** and kept only so that
+a future revisit is a config change rather than a rewrite: it is terms-gated on
+the account this was built against, and ~10 req/min and ~100 req/day works out to
+roughly one 30-minute interview per day. Do not switch it without reading
+ADR-009.
+
+### Turn-taking, local VAD (`STT_PROVIDER=groq` only)
+
+| Variable | Default | Effect |
+|---|---|---|
+| `VAD_END_SILENCE_MS` | `700` | Silence that ends a turn. This *is* the end-of-turn latency budget — unlike Flux's confidence threshold there is nothing clever to do, so the number is the lag. Below ~500 ms an ordinary mid-sentence pause starts cutting the candidate off. |
+| `VAD_START_MS` | `100` | Speech needed to open a turn. Guards against clicks and coughs. |
+| `VAD_PREROLL_MS` | `300` | Audio kept from *before* the trigger, so Whisper hears the first consonant of the first word. |
+| `VAD_AGGRESSIVENESS` | `2` | `webrtcvad` 0-3; higher filters more non-speech. 3 clips quiet sentence openings. |
+| `STT_INTERIM_INTERVAL_S` | `4.0` | How often to transcribe an increment for the live caption. Each one is a request against a 20 RPM ceiling shared with the end-of-turn transcriptions that actually matter. `0` disables captions, which takes throughput from ~7 to ~50 interviews/day. |
+| `STT_REQUESTS_PER_MINUTE` | `20` | Groq's published per-model ceiling. |
+| `STT_RESERVE_REQUESTS` | `6` | Held back from captions so an end-of-turn request always gets through. |
+
+Throughput on this path is bounded by Groq's requests-per-day rather than by
+money — see `docs/COST_MODEL.md`.
 
 ### Budget guards
 

@@ -148,6 +148,11 @@ grows with the length of the answer because the whole turn is transcribed in one
 request. So this stack beats Flux on short answers and loses on long ones, and
 the crossover is around an 8-second answer.
 
+**Repeated after merging `master`** (a second independent set of three runs per
+case): medians of **1150 ms** and **1552 ms**, against the 1157 / 1603 above.
+The spread between individual runs is wider than the gap between the two sets,
+so treat these as ~1.15 s and ~1.6 s rather than as four-digit figures.
+
 That is a more favourable result than expected, and it is worth being clear
 about *why*: Flux's 1295 ms was shown to be structural and untunable (the
 threshold sweep above recovers only ~235 ms across its whole range), whereas the

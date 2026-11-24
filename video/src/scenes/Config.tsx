@@ -20,6 +20,8 @@ export const Config: React.FC = () => (
 DEEPGRAM_API_KEY=...     # STT and TTS, one key
 GROQ_API_KEY=...         # the interviewer
 LLM_PROVIDER=groq        # groq | anthropic
+STT_PROVIDER=deepgram    # deepgram | groq
+TTS_PROVIDER=deepgram    # deepgram | groq
 LLM_MODEL=openai/gpt-oss-120b
 STT_MODEL=flux-general-en
 TTS_MODEL=aura-2-thalia-en`}</Code>
