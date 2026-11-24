@@ -130,9 +130,18 @@ constraint rather than a tuning one: the only ways down are a smaller
 `MAX_RESPONSE_CHARS` or a less talkative interviewer — both wanted anyway, but
 neither changes the order of magnitude.
 
-This figure is **computed, not measured.** Orpheus rejects every request until
-the account owner accepts the model terms in the Groq console, so the TTS half
-of ADR-009 has never made a live call. See docs/LATENCY.md.
+This figure is **computed, not measured.** Orpheus rejects every request with
+`400 model_terms_required`, including after the terms were reported accepted on
+2026-11-24 — the gate covers the whole Canopy Labs family for this key's
+organisation. The TTS half of ADR-009 has never made a live call, so the
+requests-per-interview count above is derived from the documented 200-character
+`input` cap and the standing ~6,000-7,400 character assumption, not observed.
+See docs/LATENCY.md.
+
+Note that this conclusion does not depend on the measurement. Even if Orpheus
+turns out to be fast, 100 RPD against ~50-60 requests per interview still caps
+the free pipeline at about one interview per day, which is why the recommended
+operating point below keeps TTS on Deepgram.
 
 ### Recommended operating point
 

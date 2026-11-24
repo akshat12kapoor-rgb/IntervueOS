@@ -215,10 +215,32 @@ docs/PROJECT_PLAN.md calls noticeably slow.
     requires terms acceptance. Please have the org admin accept the terms at
     https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english
 
-This is a one-time click by the account owner in the Groq console, which is not
-something this work could do on their behalf. `GroqOrpheusTts` is written,
+This is a one-time acceptance by the account owner in the Groq console, which is
+not something this work could do on their behalf. `GroqOrpheusTts` is written,
 unit-tested against a faked client, and wired into `server.py`; it has never
 made a successful live call. **Treat the TTS half of ADR-009 as unvalidated.**
+
+**Second attempt, 2026-11-24, after the terms were reported accepted: still
+blocked.** Six requests over ~100 s all returned `model_terms_required`.
+Diagnostics from the same run, which narrow down where the problem is not:
+
+| Check (same key, same run) | Result |
+|---|---|
+| `whisper-large-v3` transcription | **OK** — the key is live and unexpired |
+| `orpheus-v1-english` in `models.list()` | `active: true` |
+| `orpheus-v1-english` speech call | `400 model_terms_required` (6/6) |
+| `orpheus-arabic-saudi` speech call | `400 model_terms_required` |
+
+So this is not propagation lag on a single model: the whole Canopy Labs family
+is gated for this API key's organisation, while the key itself works for Groq's
+other audio models in the same session. The likely causes are that the
+acceptance landed on a different account or organisation than the one this key
+belongs to, or that it needs an org **admin** rather than a member. Worth
+checking that the key in `.env` belongs to the org where the terms were
+accepted, at https://console.groq.com/settings/limits.
+
+No workaround was attempted. Substituting another TTS model or vendor would
+produce a green number that says nothing about Orpheus.
 
 What is known from the vendor docs rather than measurement, and why the number
 is unlikely to be good:

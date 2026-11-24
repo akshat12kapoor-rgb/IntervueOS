@@ -232,9 +232,17 @@ decision, not this one.
 ## ADR-009 — Groq Whisper + a local VAD as a selectable free STT/TTS path
 
 **Status:** ACCEPTED 2026-11-24 for STT, validated live. **PROPOSED —
-UNVALIDATED for TTS**: Orpheus requires a terms acceptance in the Groq console
-that has not been given, so `GroqOrpheusTts` has never made a successful live
-call.
+UNVALIDATED for TTS**: Orpheus is gated behind a model-terms acceptance that is
+still not in effect for this API key's organisation, so `GroqOrpheusTts` has
+never made a successful live call.
+
+Acceptance was reported as given on 2026-11-24 and the measurement was retried:
+six requests over ~100 s all returned `400 model_terms_required`, and
+`orpheus-arabic-saudi` fails identically while `whisper-large-v3` succeeds on
+the same key in the same run. The gate is on the Canopy Labs family for this
+organisation, not on the key and not on one model. Until that clears there is no
+TTS latency number, and this status cannot move. Details and the next thing to
+check are in docs/LATENCY.md.
 
 **Decision.** Add two Groq-backed providers — `providers/groq_whisper.py`
 (`whisper-large-v3` plus a local voice-activity endpointer) and
