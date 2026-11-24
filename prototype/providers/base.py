@@ -114,3 +114,19 @@ class LlmProvider(Protocol):
         objective the interview engine chose for this turn — the LLM decides
         *how* to say it, not *what* to pursue.
         """
+
+
+class ReportProvider(Protocol):
+    """Judges a finished interview. Not latency-critical, quality-critical.
+
+    The opposite of `LlmProvider` in every tuning dimension: it may think, it
+    may take seconds, and it is called exactly once per interview. It is given
+    the deterministic evidence record from `report.py`, never a raw transcript.
+    """
+
+    async def assess(self, evidence: dict) -> dict:
+        """Return the assessment object described in `prompts.assessor_user_prompt`.
+
+        Must raise rather than invent on failure — a fabricated report is worse
+        than a missing one.
+        """

@@ -8,6 +8,7 @@ const statusLine = el("status");
 const questionEl = el("question");
 const timerEl = el("timer");
 const transcriptEl = el("transcript");
+let reportId = null;
 const orb = el("orb");
 
 let ws = null;
@@ -162,6 +163,12 @@ function handle(msg) {
       el("summary").textContent = JSON.stringify(msg.summary, null, 2);
       teardown();
       break;
+    case "report":
+      // The server is building the assessment detached from this socket, so
+      // the page is safe to open immediately — it polls until ready.
+      reportId = msg.report_id;
+      showReportLink();
+      break;
     case "error":
       questionEl.textContent = msg.message;
       setStatus("Error", "idle");
@@ -191,6 +198,15 @@ el("end").onclick = () => {
   teardown();
   setStatus("Interview ended.", "idle");
 };
+function showReportLink() {
+  if (!reportId) return;
+  const btn = el("report");
+  if (!btn) return;
+  btn.hidden = false;
+  btn.textContent = "See your report";
+  btn.onclick = () => { window.location.href = `/report/${reportId}`; };
+}
+
 el("toggle-transcript").onclick = () => {
   const on = transcriptEl.hidden;
   transcriptEl.hidden = !on;

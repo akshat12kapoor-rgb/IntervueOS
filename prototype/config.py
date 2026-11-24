@@ -48,6 +48,15 @@ class Config:
     constraint on the whole free pipeline. See docs/COST_MODEL.md."""
 
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "openai/gpt-oss-120b"))
+
+    report_model: str = field(default_factory=lambda: os.getenv("REPORT_MODEL", "openai/gpt-oss-120b"))
+    """The post-interview assessor. Not latency-critical, so this may be a
+    slower and better model than the in-loop one. ADR-004 wanted Opus here."""
+
+    report_reasoning_effort: str = field(default_factory=lambda: os.getenv("REPORT_REASONING_EFFORT", "high"))
+    """low | medium | high. Nobody is waiting on this, so it is high by default."""
+
+    max_report_tokens: int = field(default_factory=lambda: _i("MAX_REPORT_TOKENS", 4000))
     stt_model: str = field(default_factory=lambda: os.getenv("STT_MODEL", "flux-general-en"))
     tts_model: str = field(default_factory=lambda: os.getenv("TTS_MODEL", "aura-2-thalia-en"))
 

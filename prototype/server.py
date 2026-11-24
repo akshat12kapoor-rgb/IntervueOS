@@ -18,9 +18,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import pathlib
+import uuid
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from config import CONFIG
@@ -31,6 +32,8 @@ from providers.deepgram_aura import DeepgramAuraTts
 from providers.deepgram_flux import DeepgramFluxStt
 from providers.groq_tts import GroqOrpheusTts
 from providers.groq_whisper import GroqWhisperStt
+from providers.groq_report import GroqReportProvider
+from report import build_evidence, coverage_note
 from session import InterviewSession, SessionConfig
 
 logging.basicConfig(
@@ -57,6 +60,72 @@ def _stt_key_name() -> str:
 
 def _tts_key_name() -> str:
     return "groq_api_key" if CONFIG.tts_provider == "groq" else "deepgram_api_key"
+
+
+# ----------------------------------------------------------------------
+# Report store
+#
+# In memory, capped, and lost on restart. This is NOT persistence — it exists
+# so the page can be fetched after the WebSocket closes. docs/TODO.md tracks
+# real persistence; until then a report outlives its interview but not the
+# process, and the page says so.
+# ----------------------------------------------------------------------
+
+_REPORTS: dict[str, dict] = {}
+_REPORT_LIMIT = 50
+_report_tasks: set[asyncio.Task] = set()
+
+
+def _store_report(report_id: str, payload: dict) -> None:
+    _REPORTS[report_id] = payload
+    while len(_REPORTS) > _REPORT_LIMIT:
+        _REPORTS.pop(next(iter(_REPORTS)))
+
+
+async def _generate_report(report_id: str, state) -> None:
+    """Build the evidence record, have it assessed, and store the result.
+
+    Runs detached from the WebSocket: the candidate may close the tab the
+    moment the interview ends, and the report should still be waiting when
+    they open the link.
+    """
+    evidence = build_evidence(state)
+    try:
+        provider = GroqReportProvider(
+            api_key=CONFIG.groq_api_key,
+            model=CONFIG.report_model,
+            max_tokens=CONFIG.max_report_tokens,
+            reasoning_effort=CONFIG.report_reasoning_effort,
+        )
+        assessment = await provider.assess(evidence.to_dict())
+    except Exception as exc:
+        log.exception("report generation failed for %s", report_id)
+        _store_report(report_id, {
+            "status": "failed",
+            "error": str(exc)[:300],
+            "evidence": evidence.to_dict(),
+        })
+        return
+
+    log.info("report %s ready (usage: %s)", report_id, provider.usage)
+    _store_report(report_id, {
+        "status": "ready",
+        "assessment": assessment,
+        "evidence": evidence.to_dict(),
+        "caveat": coverage_note(evidence),
+    })
+
+
+@app.get("/report/{report_id}")
+async def report_page(report_id: str) -> FileResponse:
+    return FileResponse(STATIC / "report.html")
+
+
+@app.get("/api/report/{report_id}")
+async def report_json(report_id: str) -> JSONResponse:
+    if (payload := _REPORTS.get(report_id)) is None:
+        raise HTTPException(status_code=404, detail="No such report.")
+    return JSONResponse(payload)
 
 
 def _required_key_names() -> tuple[str, ...]:
@@ -262,6 +331,24 @@ async def ws_interview(ws: WebSocket) -> None:
 
             log.info("session summary: %s", session.summary())
             log.info("llm usage: %s", llm.usage)
+
+            # Hand the candidate a report link, then build it detached. The
+            # assessor takes seconds and they should not have to hold the tab
+            # open for it; the page polls until it is ready.
+            if CONFIG.groq_api_key and state.turns:
+                report_id = uuid.uuid4().hex[:12]
+                _store_report(report_id, {"status": "pending"})
+                task = asyncio.create_task(
+                    _generate_report(report_id, state), name=f"report:{report_id}"
+                )
+                _report_tasks.add(task)
+                task.add_done_callback(_report_tasks.discard)
+                try:
+                    await emit_json({"type": "report", "report_id": report_id})
+                except Exception:
+                    # They closed the tab. The report is still being built and
+                    # will be at /report/<id> regardless.
+                    log.info("report %s: client gone, building anyway", report_id)
 
     except WebSocketDisconnect:
         log.info("client disconnected")
