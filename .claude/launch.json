@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "intervueos",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "-m", "uvicorn", "server:app",
+        "--app-dir", "prototype",
+        "--port", "8000"
+      ],
+      "port": 8000
+    }
+  ]
+}
