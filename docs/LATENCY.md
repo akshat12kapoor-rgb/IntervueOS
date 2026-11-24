@@ -207,7 +207,7 @@ using the 470 ms Groq LLM time-to-first-token from ADR-008 and Aura-2's measured
 long ones.** The long-answer case crosses the 2-second mark that
 docs/PROJECT_PLAN.md calls noticeably slow.
 
-## Orpheus TTS — NOT MEASURED
+## Orpheus TTS — REJECTED, never measured
 
 **No latency number for Groq TTS exists.** Every request returns:
 
@@ -218,7 +218,8 @@ docs/PROJECT_PLAN.md calls noticeably slow.
 This is a one-time acceptance by the account owner in the Groq console, which is
 not something this work could do on their behalf. `GroqOrpheusTts` is written,
 unit-tested against a faked client, and wired into `server.py`; it has never
-made a successful live call. **Treat the TTS half of ADR-009 as unvalidated.**
+made a successful live call. **Orpheus is rejected in ADR-009 — there is no
+latency number for it and there will not be one on this account.**
 
 **Second attempt, 2026-11-24, after the terms were reported accepted: still
 blocked.** Six requests over ~100 s all returned `model_terms_required`.
@@ -242,6 +243,13 @@ accepted, at https://console.groq.com/settings/limits.
 No workaround was attempted. Substituting another TTS model or vendor would
 produce a green number that says nothing about Orpheus.
 
+**Orpheus was rejected on 2026-11-24 without a latency measurement**, because
+the measurement would not have changed the decision: 10 RPM / 100 RPD against
+~50-60 requests per interview is roughly one interview per day whatever the
+latency turns out to be. The gate stopped the measurement; the rate limit
+decided the question. See ADR-009 for the full reasoning and for what would
+have to change to revisit it.
+
 What is known from the vendor docs rather than measurement, and why the number
 is unlikely to be good:
 
@@ -259,10 +267,22 @@ To fill this section in, accept the model terms and run:
 
     .venv/bin/python tools/probe_groq_audio.py <16k-mono.wav>
 
-## Recommended operating point
+## Recommended setup
 
-`STT_PROVIDER=groq` with `TTS_PROVIDER=deepgram`. It takes ~52% off the
-Deepgram bill ($0.375 → $0.180 per 30-minute interview), is fully measured,
-improves transcription of the technical terms the product is about, and costs
-~130-580 ms of response latency. Going all-Groq additionally depends on an
-unvalidated TTS path with a rate limit that permits roughly one interview a day.
+    STT_PROVIDER=groq
+    TTS_PROVIDER=deepgram
+
+Measured basis, all of it above: **52% off the Deepgram bill** ($0.375 →
+$0.180 per 30-minute interview), an end-of-turn **crossover at ~8 seconds** —
+faster than Flux below it, slower above — and **WER 0.438 → 0.125** from
+Whisper's `prompt` on the technical terms Flux mangles. The price is ~130 ms of
+response latency on short answers and ~580 ms on long ones.
+
+All-Groq is not recommended: Orpheus is rejected (above, and ADR-009).
+
+**Carry this caveat with the numbers.** Every figure in this section came from
+clean `say`-generated audio. That is the easiest possible input for a VAD, and
+webrtcvad is weakest precisely where it is unrepresentative — background noise
+and far-field microphones. The end-of-turn figures in particular should be
+re-measured against a human in a real room before anyone treats them as the
+operating characteristics of the product.

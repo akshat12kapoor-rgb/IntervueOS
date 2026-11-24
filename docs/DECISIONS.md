@@ -231,30 +231,87 @@ decision, not this one.
 
 ## ADR-009 — Groq Whisper + a local VAD as a selectable free STT/TTS path
 
-**Status:** ACCEPTED 2026-11-24 for STT, validated live. **PROPOSED —
-UNVALIDATED for TTS**: Orpheus is gated behind a model-terms acceptance that is
-still not in effect for this API key's organisation, so `GroqOrpheusTts` has
-never made a successful live call.
+**Status:**
+- **STT — ACCEPTED 2026-11-24, validated live.** `whisper-large-v3` plus a local
+  endpointer replaces Flux when `STT_PROVIDER=groq`.
+- **TTS — REJECTED 2026-11-24.** Orpheus is not adopted. `providers/groq_tts.py`
+  stays in the tree, wired and unit-tested, behind `TTS_PROVIDER=groq`, but
+  `deepgram` remains the default and the recommendation.
 
-Acceptance was reported as given on 2026-11-24 and the measurement was retried:
-six requests over ~100 s all returned `400 model_terms_required`, and
-`orpheus-arabic-saudi` fails identically while `whisper-large-v3` succeeds on
-the same key in the same run. The gate is on the Canopy Labs family for this
-organisation, not on the key and not on one model. Until that clears there is no
-TTS latency number, and this status cannot move. Details and the next thing to
-check are in docs/LATENCY.md.
+**Decision.** Add `providers/groq_whisper.py` (`whisper-large-v3` plus a local
+voice-activity endpointer) and `providers/groq_tts.py`
+(`canopylabs/orpheus-v1-english`), selected by new `STT_PROVIDER` /
+`TTS_PROVIDER` config switches. Keep both Deepgram providers in place, and keep
+`deepgram` as the default for both.
 
-**Decision.** Add two Groq-backed providers — `providers/groq_whisper.py`
-(`whisper-large-v3` plus a local voice-activity endpointer) and
-`providers/groq_tts.py` (`canopylabs/orpheus-v1-english`) — selected by new
-`STT_PROVIDER` / `TTS_PROVIDER` config switches. Keep both Deepgram providers in
-place, and keep `deepgram` as the default for both.
+**The recommended setup is `STT_PROVIDER=groq` with `TTS_PROVIDER=deepgram`** —
+free, measured STT; Deepgram for the voice. Not all-Groq.
 
-**Recommended operating point: `STT_PROVIDER=groq`, `TTS_PROVIDER=deepgram`.**
-Not all-Groq. That takes 52% off the Deepgram bill ($0.375 → $0.180 per 30-min
-interview; $0.195 of it was STT), is fully measured, and improves transcription
-of technical terms. The remaining $0.180 is not worth what all-Groq costs — see
-"Why not all-Groq".
+### Why Orpheus was rejected
+
+Two independent reasons, and **the rate limit is the real one**. Read them in
+this order, because the gate is the more visible problem and the less important
+one.
+
+**1. The rate limit makes it unusable, measurement or no measurement.** Orpheus
+allows **10 RPM and 100 RPD** and caps `input` at 200 characters. The
+interviewer speaks ~6,000-7,400 characters per interview, so at a 200-character
+ceiling that is ~50-60 requests — **roughly one 30-minute interview per day,
+with no margin for a retry.**
+
+This is a product ceiling, not a tuning problem. The only levers are a smaller
+`MAX_RESPONSE_CHARS` or a less talkative interviewer; both are wanted anyway and
+neither changes the order of magnitude. A paid tier would lift it, but the entire
+point of this ADR was to stop paying. **Even a perfect latency measurement would
+not have changed this conclusion**, which is why the decision does not wait on
+one.
+
+**2. It could never be measured on this account.** Every request returns
+`400 model_terms_required`. The terms were accepted on 2026-11-24 and the gate
+did not lift: six requests over ~100 s all failed. Diagnostics from that run
+locate the problem precisely —
+
+| Check (same key, same run) | Result |
+|---|---|
+| `whisper-large-v3` transcription | OK — the key is live |
+| both Canopy models in `models.list()` | `active: true` |
+| `orpheus-v1-english` speech | `400 model_terms_required` (6/6) |
+| `orpheus-arabic-saudi` speech | `400 model_terms_required` |
+
+— so the gate covers the whole Canopy Labs family for this key's organisation,
+rather than being propagation lag on one model or a problem with the key. The
+likely cause is an acceptance on a different organisation than the key belongs
+to, or one needing an org admin rather than a member. No substitute model or
+vendor was tried: a green number from a different TTS says nothing about Orpheus.
+
+So `GroqOrpheusTts` has **never made a successful live call**. There is no
+time-to-first-byte figure, no confirmation that the returned WAV is really PCM16
+mono at the configured rate, and no exercise of the `clear()` epoch counter
+against real audio. All three are covered by `tools/probe_groq_audio.py` and
+would print on the first successful call.
+
+### What would have to change to revisit it
+
+Not the gate alone — fixing the terms acceptance would only make measurement
+possible, and the rate limit would still decide the question. Revisit if **any
+of these** changes:
+
+- **Groq raises Orpheus's limits**, or a paid tier becomes acceptable. ~100 RPD
+  is the binding number; roughly 300+ RPD would make a 30-minute interview
+  routine rather than a once-a-day event.
+- **The 200-character `input` cap is lifted or streaming is added.** The cap
+  drives the request count, and the lack of streaming means time-to-first-byte
+  is the full synthesis time of the first sentence — it cannot beat Aura-2's
+  measured 334 ms time-to-first-*frame* on the same text.
+- **The interviewer gets much terser.** If `MAX_RESPONSE_CHARS` fell far enough
+  that an interview fit in ~25-30 requests, 100 RPD would allow three or four
+  interviews a day. That is a product change, not a config tweak.
+- **Another free TTS appears on the key.** `playai-tts` is documented but not
+  available on this account — a models-list probe returns only the two Orpheus
+  and two Whisper models. There is currently no alternative to fall back to.
+
+The provider is kept rather than deleted precisely so that a revisit is a
+config change and a measurement, not a rewrite.
 
 ### Why this is worth doing at all
 
@@ -405,23 +462,22 @@ is tight (`_RequestBudget`, with `STT_RESERVE_REQUESTS` held back): a late capti
 is worthless, and starving the end-of-turn request to deliver one would be
 strictly worse.
 
-### Why not all-Groq
+### The recommended setup
 
-Orpheus is free, but its documented limits are **10 RPM and 100 RPD** and its
-`input` caps at 200 characters. At ~6,000-7,400 interviewer characters per
-interview that is ~50-60 requests — **about one 30-minute interview per day, with
-no margin for a retry.** It is also non-streaming, one complete WAV body per
-request, so its time-to-first-byte is the full synthesis time of the first
-sentence and cannot beat Aura-2's measured 334 ms time-to-first-*frame*.
+    STT_PROVIDER=groq        # free, measured
+    TTS_PROVIDER=deepgram    # Aura-2 keeps the voice
 
-And it is unvalidated: every request returns `400 model_terms_required`, pending
-a one-time acceptance by the account owner at
-https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english — not
-something this work could do on their behalf. The provider is written,
-unit-tested against a faked client, and wired in, but has never made a live call.
-**Do not treat the TTS half of this ADR as validated.** To finish it: accept the
-terms, then run `.venv/bin/python tools/probe_groq_audio.py <16k-mono.wav>` and
-fill in the Orpheus section of docs/LATENCY.md.
+| Configuration | $ / 30-min interview | Interviews/day | Measured? |
+|---|---|---|---|
+| All Deepgram | $0.375 | credit-bound | yes |
+| **Groq STT + Deepgram TTS** | **$0.180** | **~7** | **yes** |
+| All Groq | $0.000 | ~1 | STT only |
+
+This takes **52% off the Deepgram bill** — $0.195 of the $0.375 was STT — and
+stretches the remaining trial credit from ~530 interviews to ~1,100. Everything
+behind it is measured: the end-of-turn crossover at ~8 seconds, and the WER
+improvement from Whisper's `prompt`. The last $0.180 is what all-Groq would
+save, against a ceiling of about one interview a day.
 
 ### Reversibility
 
@@ -443,11 +499,17 @@ provider class patched, so no test reaches a live API. Nothing was deleted, and
 
 ### Still open
 
-- **The TTS half is unvalidated.** Above.
-- **The VAD has only ever met synthetic speech.** Every number here used clean
-  `say`-generated audio. A human in a noisy room is the real test, and it is the
-  case where webrtcvad is weakest against Silero. `VAD_AGGRESSIVENESS` and
-  `VAD_END_SILENCE_MS` are the first things to tune, `SileroGate` the fallback.
+- **The VAD has only ever met synthetic speech.** This is the biggest open risk
+  in the accepted half, and it compounds: every number in this ADR came from
+  clean `say`-generated audio, which is the easiest possible input for a VAD —
+  and webrtcvad is weakest exactly where that input is unrepresentative, namely
+  background noise and far-field microphones. A human in a noisy room is the
+  real test and has not been run. `VAD_AGGRESSIVENESS` and `VAD_END_SILENCE_MS`
+  are the first things to tune; `SileroGate` behind the existing `SpeechGate`
+  seam is the fallback if tuning is not enough.
+- **Orpheus is rejected, not deleted.** `TTS_PROVIDER=groq` still selects it and
+  its unit tests still run, so a future revisit is a config change plus a
+  measurement. See "What would have to change to revisit it".
 - **`p99` is still transcribed as "page 99"** by Whisper and "p ninety nine" by
   Flux. Neither stack handles it; it stays in TODO.md.
 - **The post-interview report is still Opus** and still not free (ADR-004).

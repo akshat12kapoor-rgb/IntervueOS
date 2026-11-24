@@ -48,7 +48,9 @@ voice loop can be freed one stage at a time. The next section is the arithmetic.
 Groq hosts both `whisper-large-v3` (STT) and `canopylabs/orpheus-v1-english`
 (TTS) on the same free key as the interviewer LLM. Dollar cost for both is
 **$0**. As with the LLM, cost is replaced by rate limits — and for TTS the rate
-limit is severe enough to decide the question on its own.
+limit was severe enough to decide the question on its own: **STT was adopted,
+Orpheus was rejected** (ADR-009). The arithmetic for both is below, because the
+TTS numbers are the reason for that split.
 
 Limits below are Groq's published per-model table as of 2026-11-24. The Whisper
 row was **confirmed against live response headers** during validation
@@ -112,7 +114,7 @@ So the Groq STT path bills ~60% of wall clock where Flux bills 100%, and the
 the one place where leaving Deepgram makes the resource model *better* rather
 than merely cheaper.
 
-### Does a 30-minute interview fit? TTS: no
+### Does a 30-minute interview fit? TTS: no — and this is why it was rejected
 
 The interviewer speaks ~6,000-7,400 characters per interview. Orpheus caps
 `input` at 200 characters, and sentence boundaries do not pack to exactly 200,
@@ -143,19 +145,24 @@ turns out to be fast, 100 RPD against ~50-60 requests per interview still caps
 the free pipeline at about one interview per day, which is why the recommended
 operating point below keeps TTS on Deepgram.
 
-### Recommended operating point
+### Recommended setup
+
+    STT_PROVIDER=groq
+    TTS_PROVIDER=deepgram
 
 | Configuration | $ / 30-min interview | Interviews/day | Measured? |
 |---|---|---|---|
-| All Deepgram (default) | $0.375 | credit-bound | yes |
-| **`STT_PROVIDER=groq`, TTS Deepgram** | **$0.180** | **~7** | **yes** |
-| All Groq | $0.000 | ~1 | STT only |
+| All Deepgram | $0.375 | credit-bound | yes |
+| **Groq STT + Deepgram TTS** | **$0.180** | **~7** | **yes** |
+| All Groq | $0.000 | ~1 | STT only — TTS rejected |
 
-`STT_PROVIDER=groq` with `TTS_PROVIDER=deepgram` takes **52% off the Deepgram
-bill** — $0.195 of the $0.375 is STT — and every part of it is measured. It
-stretches the remaining trial credit from ~530 interviews to ~1,100. Going
-all-Groq saves the last $0.180 and buys a rate limit of about one interview a
-day plus an unvalidated TTS path.
+This takes **52% off the Deepgram bill** — $0.195 of the $0.375 was STT — and
+every part of it is measured. It stretches the remaining trial credit from ~530
+interviews to ~1,100. The ~7/day figure is the Whisper RPD ceiling and is itself
+a lever: `STT_INTERIM_INTERVAL_S=0` drops live captions and takes it to ~50/day.
+
+All-Groq would save the last $0.180. It is **not** recommended: Orpheus is
+rejected in ADR-009, on the rate limit rather than on the missing measurement.
 
 ## Unit: one 30-minute interview (paid-tier fallback)
 
