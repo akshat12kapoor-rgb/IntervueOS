@@ -6,3 +6,6 @@ __pycache__/
 artifacts/*.wav
 .DS_Store
 .claude/settings.local.json
+video/node_modules/
+video/out/
+video/stills/
