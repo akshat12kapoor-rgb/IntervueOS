@@ -147,7 +147,8 @@ robotic enough to break immersion. `TtsProvider` makes this a one-file change.
 
 ## ADR-004 — Model routing: Sonnet 5 in the loop, Opus 5 for the report
 
-**Status:** PROPOSED — UNVALIDATED. Zero Claude calls have succeeded.
+**Status:** SUPERSEDED by ADR-008 for the in-loop turn. The Opus-for-the-report
+and Haiku-for-extraction rows remain PROPOSED — UNVALIDATED.
 
 | Task | Model | Why |
 |---|---|---|
@@ -184,3 +185,44 @@ providers build their TLS context from `certifi` (`providers/_tls.py`).
 
 Verification is always on; this never disables certificate checking. The benefit
 is that a laptop, a CI runner, and a slim container image all behave identically.
+
+---
+
+## ADR-008 — Groq for the in-loop interviewer turn
+
+**Status:** ACCEPTED 2026-11-24, validated live.
+
+The in-loop turn moves from `claude-sonnet-5` to Groq `openai/gpt-oss-120b`.
+
+**Why.** Two reasons, in order of weight:
+
+1. **Cost.** Groq's free tier runs the interviewer loop at $0. The Anthropic
+   account has never had credit, so ADR-004's in-loop row was never validated
+   against a billed call — it was an estimate that blocked the whole prototype.
+2. **Latency.** Measured 2026-11-24: ~470 ms to first token, ~520 ms to a
+   complete ~40-token question, over three objectives (`probe`, `challenge`,
+   `specificity`). That is inside the budget in docs/LATENCY.md.
+
+**What this costs us.**
+
+- **No prompt caching.** The stable prefix (~4K tokens of role + topics + JD +
+  resume) is re-sent every turn. On the free tier the binding constraint is
+  tokens-per-minute, not dollars — see docs/COST_MODEL.md. This is the single
+  biggest reason to revisit the choice if a paid tier is ever adopted.
+- **Reasoning models need handling.** `gpt-oss-120b` rejects
+  `reasoning_effort="none"` (only `low`/`medium`/`high`), so the provider pins
+  `low` and sets `reasoning_format="hidden"`. Without the latter, a reasoning
+  preamble would stream straight into the TTS provider and be spoken aloud.
+  `include_reasoning` and `reasoning_format` are mutually exclusive on this API.
+- **Usage reporting differs.** Groq returns usage on the final stream chunk under
+  `x_groq.usage`; the installed SDK (1.7.0) does not accept OpenAI's
+  `stream_options={"include_usage": True}`.
+
+**Reversibility.** High, and deliberately so. `LLM_PROVIDER=anthropic` switches
+back with no code change; both providers satisfy `LlmProvider` and the
+construction site in `server.py` picks between them. The Anthropic provider is
+kept, not deleted.
+
+**Still open.** The post-interview assessment is unchanged and still routed to
+Opus in ADR-004 — i.e. still unvalidated and still not free. That is the next
+decision, not this one.

@@ -31,10 +31,22 @@ def reconfigure(monkeypatch, **overrides) -> None:
     monkeypatch.setattr(server, "CONFIG", dataclasses.replace(server.CONFIG, **overrides))
 
 
-@pytest.fixture
-def wired(monkeypatch):
-    """Swap the vendor providers, keep the server."""
-    reconfigure(monkeypatch, deepgram_api_key="test-key", anthropic_api_key="test-key")
+@pytest.fixture(params=["groq", "anthropic"])
+def wired(monkeypatch, request):
+    """Swap the vendor providers, keep the server.
+
+    Parametrised over both LLM backends so the provider-selection switch in
+    `server.py` is exercised for each one. A bug that wires up the wrong class
+    would otherwise only show up for whichever provider the local .env happens
+    to name — and would reach the live API instead of the scripted double.
+    """
+    reconfigure(
+        monkeypatch,
+        deepgram_api_key="test-key",
+        anthropic_api_key="test-key",
+        groq_api_key="test-key",
+        llm_provider=request.param,
+    )
 
     made: dict = {}
 
@@ -52,7 +64,9 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(server, "DeepgramFluxStt", fake_stt)
     monkeypatch.setattr(server, "DeepgramAuraTts", fake_tts)
+    # Patch both: the switch must never reach a real vendor client in tests.
     monkeypatch.setattr(server, "AnthropicInterviewerLlm", fake_llm)
+    monkeypatch.setattr(server, "GroqInterviewerLlm", fake_llm)
     return made
 
 

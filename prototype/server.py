@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 from config import CONFIG
 from interview import InterviewState
 from providers.anthropic_llm import AnthropicInterviewerLlm
+from providers.groq_llm import GroqInterviewerLlm
 from providers.deepgram_aura import DeepgramAuraTts
 from providers.deepgram_flux import DeepgramFluxStt
 from session import InterviewSession, SessionConfig
@@ -40,6 +41,14 @@ app = FastAPI(title="IntervueOS prototype")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
+def _llm_key_name() -> str:
+    return "groq_api_key" if CONFIG.llm_provider == "groq" else "anthropic_api_key"
+
+
+def _llm_key() -> str:
+    return getattr(CONFIG, _llm_key_name())
+
+
 @app.get("/")
 async def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
@@ -50,7 +59,8 @@ async def health() -> dict:
     return {
         "ok": True,
         "deepgram_key": bool(CONFIG.deepgram_api_key),
-        "anthropic_key": bool(CONFIG.anthropic_api_key),
+        "llm_provider": CONFIG.llm_provider,
+        "llm_key": bool(_llm_key()),
         "models": {
             "llm": CONFIG.llm_model,
             "stt": CONFIG.stt_model,
@@ -63,7 +73,7 @@ async def health() -> dict:
 async def ws_interview(ws: WebSocket) -> None:
     await ws.accept()
     try:
-        CONFIG.require("deepgram_api_key", "anthropic_api_key")
+        CONFIG.require("deepgram_api_key", _llm_key_name())
     except RuntimeError as exc:
         await ws.send_json({"type": "error", "message": str(exc)})
         await ws.close()
@@ -107,8 +117,13 @@ async def ws_interview(ws: WebSocket) -> None:
         model=CONFIG.tts_model,
         sample_rate=CONFIG.tts_sample_rate,
     )
-    llm = AnthropicInterviewerLlm(
-        api_key=CONFIG.anthropic_api_key,
+    llm_cls = (
+        GroqInterviewerLlm
+        if CONFIG.llm_provider == "groq"
+        else AnthropicInterviewerLlm
+    )
+    llm = llm_cls(
+        api_key=_llm_key(),
         model=CONFIG.llm_model,
         role=state.role,
         topics=topics,

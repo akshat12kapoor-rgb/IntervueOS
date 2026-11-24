@@ -23,9 +23,13 @@ class Config:
     # --- credentials ---
     deepgram_api_key: str = field(default_factory=lambda: os.getenv("DEEPGRAM_API_KEY", ""))
     anthropic_api_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
+    groq_api_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
 
     # --- models (ADR-004) ---
-    llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "claude-sonnet-5"))
+    llm_provider: str = field(default_factory=lambda: os.getenv("LLM_PROVIDER", "groq"))
+    """"groq" or "anthropic". Selects the in-loop interviewer backend."""
+
+    llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", "openai/gpt-oss-120b"))
     stt_model: str = field(default_factory=lambda: os.getenv("STT_MODEL", "flux-general-en"))
     tts_model: str = field(default_factory=lambda: os.getenv("TTS_MODEL", "aura-2-thalia-en"))
 

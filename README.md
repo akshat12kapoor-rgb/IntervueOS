@@ -9,9 +9,10 @@ The name is temporary and appears only in `prototype/static/index.html`,
 
 ## Status
 
-Phase 0 is complete and the **voice prototype is built and tested** — but it has
-**not been run live**, because this environment has no provider API keys. See
-`docs/PROJECT_PLAN.md` for exactly what is and is not verified.
+Phase 0 is complete and the **voice prototype is built and tested**. Deepgram
+(STT + TTS) and Groq (interviewer LLM) are both validated against their live
+APIs. The full end-to-end voice loop in a browser has **not** been run yet.
+See `docs/PROJECT_PLAN.md` for exactly what is and is not verified.
 
 ## Running the prototype
 
@@ -20,7 +21,9 @@ Needs Python 3.12+ and two API keys:
 - **Deepgram** — https://console.deepgram.com — one key covers both speech
   recognition (Flux) and speech synthesis (Aura-2). New accounts get $200 free
   credit, which is roughly 400 ten-minute interviews.
-- **Anthropic** — https://console.anthropic.com
+- **Groq** — https://console.groq.com/keys — the interviewer's reasoning.
+  Free tier, no card required. Verified live 2026-11-24 against
+  `openai/gpt-oss-120b` at ~470 ms to first token.
 
 ```bash
 python3 -m venv .venv

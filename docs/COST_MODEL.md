@@ -1,9 +1,13 @@
 # Cost Model
 
-> **Measurement status (2026-09-11).** The Deepgram half of this model is now
-> measured against the live API. The Claude half is **still estimated** — the
-> Anthropic account has no credit, so zero billed calls have succeeded. Rows are
-> marked accordingly. Nothing below is fabricated; unmeasured rows say so.
+> **Measurement status (2026-11-24).** The Deepgram half is measured against the
+> live API. The interviewer loop moved to Groq's free tier (ADR-008), so its
+> **dollar cost is now $0** and the Sonnet rows below are retained only as the
+> paid-tier fallback, still unvalidated. The post-interview report rows remain
+> estimated. Nothing below is fabricated; unmeasured rows say so.
+>
+> **The binding constraint on the free tier is rate limits, not dollars.** See
+> the free-tier section immediately below.
 
 All figures are **usage-based**. Fixed infrastructure cost at V1 is $0 beyond a
 free-tier Postgres and a hobby-tier host.
@@ -11,7 +15,37 @@ free-tier Postgres and a hobby-tier host.
 Prices verified 2026-09-10. Sources listed at the bottom. Re-verify quarterly —
 `config.py` holds every model ID so a repricing is a config change.
 
-## Unit: one 30-minute interview
+## Free-tier operating point (current, ADR-008)
+
+The interviewer loop runs on Groq's free tier at **$0**. What replaces cost as
+the constraint is throughput:
+
+| Resource | Free-tier limit | What a 30-min interview needs | Headroom |
+|---|---|---|---|
+| Requests/min | ~30 RPM | ~1.3 turns/min (40 turns / 30 min) | ample |
+| Requests/day | ~1,000 RPD | ~40 | ~25 interviews/day |
+| Tokens/min | ~8,000 TPM | ~630 in + ~40 out per turn, ~1.3 turns/min ≈ **~870 TPM** | ~9x |
+
+Measured per-turn input is **~630 tokens**, not the 4,000 assumed below — the
+JD and resume in the smoke test were short. A real JD + resume will push the
+prefix toward 4K, and because there is **no prompt caching on Groq** that full
+prefix is re-sent every turn: ~4,000 × 1.3 ≈ **5,200 TPM**, which is ~65% of the
+8,000 TPM ceiling. That is the number to watch. Mitigations, in order of
+preference: trim the system prompt, truncate JD/resume harder than the current
+20,000-char cap, or shrink `TRANSCRIPT_WINDOW`.
+
+Free-tier limits are published per-model and have been cut at least twice in
+2026, so re-verify at https://console.groq.com/docs/rate-limits rather than
+trusting this table.
+
+**What is still not free:** Deepgram STT + TTS (~$0.375 per 30-min interview,
+against a finite $200 of trial credit) and the post-interview report. Groq hosts
+`whisper-large-v3-turbo` and `canopylabs/orpheus-v1-english` on the same free
+key, which is a plausible path to a fully-free pipeline — but Flux's native
+turn detection would have to be replaced with a local endpointer, which is real
+work and is not done.
+
+## Unit: one 30-minute interview (paid-tier fallback)
 
 Assumptions, stated so they can be argued with:
 - Candidate speaks ~60% of wall-clock, interviewer ~30%, silence ~10%.
