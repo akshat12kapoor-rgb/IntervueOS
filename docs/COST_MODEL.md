@@ -38,12 +38,131 @@ Free-tier limits are published per-model and have been cut at least twice in
 2026, so re-verify at https://console.groq.com/docs/rate-limits rather than
 trusting this table.
 
-**What is still not free:** Deepgram STT + TTS (~$0.375 per 30-min interview,
-against a finite $200 of trial credit) and the post-interview report. Groq hosts
-`whisper-large-v3-turbo` and `canopylabs/orpheus-v1-english` on the same free
-key, which is a plausible path to a fully-free pipeline — but Flux's native
-turn detection would have to be replaced with a local endpointer, which is real
-work and is not done.
+**What is still not free:** the post-interview report, plus whichever of STT and
+TTS is still pointed at Deepgram. The local endpointer that earlier revisions of
+this section called "real work and not done" is now built (ADR-009), so the
+voice loop can be freed one stage at a time. The next section is the arithmetic.
+
+## Audio on the free tier (ADR-009)
+
+Groq hosts both `whisper-large-v3` (STT) and `canopylabs/orpheus-v1-english`
+(TTS) on the same free key as the interviewer LLM. Dollar cost for both is
+**$0**. As with the LLM, cost is replaced by rate limits — and for TTS the rate
+limit was severe enough to decide the question on its own: **STT was adopted,
+Orpheus was rejected** (ADR-009). The arithmetic for both is below, because the
+TTS numbers are the reason for that split.
+
+Limits below are Groq's published per-model table as of 2026-11-24. The Whisper
+row was **confirmed against live response headers** during validation
+(`x-ratelimit-limit-requests: 2000`, matching the published RPD); the Orpheus
+row could **not** be confirmed, because the model rejects every request until
+its terms are accepted. Groq's page labels its table as Developer-plan base
+limits, and these limits have been cut at least twice in 2026 — re-verify at
+https://console.groq.com/settings/limits rather than trusting this table.
+
+| Model | RPM | RPD | Audio-s/hour | Audio-s/day |
+|---|---|---|---|---|
+| `whisper-large-v3` | 20 | 2,000 | 7,200 | 28,800 |
+| `whisper-large-v3-turbo` | 20 | 2,000 | 7,200 | 28,800 |
+| `canopylabs/orpheus-v1-english` | 10 | 100 | — | — |
+
+### Does a 30-minute interview fit? STT: yes, comfortably
+
+Measured request pattern (`tools/probe_groq_audio.py`): **one end-of-turn
+request per candidate turn, plus one interim caption request per ~4 s of
+speech**. A 15.8 s answer produced 4 interims + 1 final = 5 requests.
+
+Against the standing assumptions (~40 turns; candidate speaks ~60% of 30 min
+≈ 1,080 s, so ~27 s per answer ≈ 7 requests):
+
+| Resource | Needed per interview | Limit | Headroom |
+|---|---|---|---|
+| Requests/min | ~1.3 turns/min × 7 ≈ **9 RPM** | 20 | ~2.2x |
+| Requests/day | 40 × 7 ≈ **280** | 2,000 | **~7 interviews/day** |
+| Audio-s/hour | ~2,160 (see below) | 7,200 | ~3.3x |
+| Audio-s/day | ~2,160 | 28,800 | ~13 interviews/day |
+
+Requests/day is the binding STT constraint, at roughly **7 interviews per day**.
+`STT_INTERIM_INTERVAL_S` is the lever: raising it to 8 s roughly halves the
+request count at the cost of a laggier live caption, and setting it to 0
+disables captions entirely, taking the pattern to one request per turn — ~40
+requests per interview, or ~50 interviews/day.
+
+**Audio-seconds are ~2x speech, not ~7x.** Interims transcribe only the audio
+since the last interim (`Endpointer.take_increment`), so a turn's audio is
+uploaded once across all of its interims and once more for the whole-turn
+final. Re-transcribing the whole turn for each interim instead would have made
+this quadratic in turn length — a 20 s answer at a 2 s cadence is 110
+audio-seconds — and a handful of long answers would have exhausted the hourly
+allowance. That is why `groq_whisper.py` makes interims incremental.
+
+### Note 1 does not apply to the Groq path
+
+Note 1 below records a measured Deepgram constraint: Flux drives its silence
+timeout from *received* audio, so the client must stream silence for the entire
+wall clock and STT bills all 30 minutes rather than just the talking.
+
+**Endpointing locally inverts this.** The VAD decides turn boundaries on the
+client side, so silence is never uploaded — only speech segments become
+requests. Measured: a 15.79 s utterance billed **16.52 audio-seconds** (the
+excess being 300 ms of pre-roll plus the hangover frames), and 200 frames of
+pure silence produced **zero requests** (asserted in
+`tests/test_groq_audio.py::test_silence_alone_never_produces_a_turn`).
+
+So the Groq STT path bills ~60% of wall clock where Flux bills 100%, and the
+~1.5 s of silence the endpointer waits through costs nothing at all. This is
+the one place where leaving Deepgram makes the resource model *better* rather
+than merely cheaper.
+
+### Does a 30-minute interview fit? TTS: no — and this is why it was rejected
+
+The interviewer speaks ~6,000-7,400 characters per interview. Orpheus caps
+`input` at 200 characters, and sentence boundaries do not pack to exactly 200,
+so call it ~50-60 requests per interview against **RPD 100**.
+
+| Resource | Needed per interview | Limit | Verdict |
+|---|---|---|---|
+| Requests/min, average | ~1.3 turns/min × ~1.5 ≈ 2 RPM | 10 | fits |
+| Requests/min, burst | 2-3 back-to-back for one 400-char answer | 10 | fits, but bursty |
+| Requests/day | **~50-60** | 100 | **~1 interview/day** |
+
+**Roughly one 30-minute interview per day, with no margin for a retry.** That is
+the binding constraint on the entire free pipeline, and it is a product
+constraint rather than a tuning one: the only ways down are a smaller
+`MAX_RESPONSE_CHARS` or a less talkative interviewer — both wanted anyway, but
+neither changes the order of magnitude.
+
+This figure is **computed, not measured.** Orpheus rejects every request with
+`400 model_terms_required`, including after the terms were reported accepted on
+2026-11-24 — the gate covers the whole Canopy Labs family for this key's
+organisation. The TTS half of ADR-009 has never made a live call, so the
+requests-per-interview count above is derived from the documented 200-character
+`input` cap and the standing ~6,000-7,400 character assumption, not observed.
+See docs/LATENCY.md.
+
+Note that this conclusion does not depend on the measurement. Even if Orpheus
+turns out to be fast, 100 RPD against ~50-60 requests per interview still caps
+the free pipeline at about one interview per day, which is why the recommended
+operating point below keeps TTS on Deepgram.
+
+### Recommended setup
+
+    STT_PROVIDER=groq
+    TTS_PROVIDER=deepgram
+
+| Configuration | $ / 30-min interview | Interviews/day | Measured? |
+|---|---|---|---|
+| All Deepgram | $0.375 | credit-bound | yes |
+| **Groq STT + Deepgram TTS** | **$0.180** | **~7** | **yes** |
+| All Groq | $0.000 | ~1 | STT only — TTS rejected |
+
+This takes **52% off the Deepgram bill** — $0.195 of the $0.375 was STT — and
+every part of it is measured. It stretches the remaining trial credit from ~530
+interviews to ~1,100. The ~7/day figure is the Whisper RPD ceiling and is itself
+a lever: `STT_INTERIM_INTERVAL_S=0` drops live captions and takes it to ~50/day.
+
+All-Groq would save the last $0.180. It is **not** recommended: Orpheus is
+rejected in ADR-009, on the rate limit rather than on the missing measurement.
 
 ## Unit: one 30-minute interview (paid-tier fallback)
 

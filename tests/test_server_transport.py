@@ -31,21 +31,39 @@ def reconfigure(monkeypatch, **overrides) -> None:
     monkeypatch.setattr(server, "CONFIG", dataclasses.replace(server.CONFIG, **overrides))
 
 
-@pytest.fixture(params=["groq", "anthropic"])
+BACKENDS = [
+    # (stt_provider, tts_provider, llm_provider)
+    ("deepgram", "deepgram", "groq"),
+    ("deepgram", "deepgram", "anthropic"),
+    ("groq", "groq", "groq"),  # the fully-free pipeline, ADR-009
+    ("groq", "deepgram", "groq"),  # mixed: free STT, paid TTS
+    ("deepgram", "groq", "groq"),  # mixed: paid STT, free TTS
+]
+
+
+@pytest.fixture(params=BACKENDS, ids=lambda b: "-".join(b))
 def wired(monkeypatch, request):
     """Swap the vendor providers, keep the server.
 
-    Parametrised over both LLM backends so the provider-selection switch in
-    `server.py` is exercised for each one. A bug that wires up the wrong class
-    would otherwise only show up for whichever provider the local .env happens
-    to name — and would reach the live API instead of the scripted double.
+    Parametrised over every provider combination so the three selection
+    switches in `server.py` are exercised together. A bug that wires up the
+    wrong class would otherwise only show up for whichever providers the local
+    .env happens to name — and would reach the live API instead of the
+    scripted double.
+
+    The mixed rows are not hypothetical: Orpheus's 10 RPM ceiling makes
+    `STT_PROVIDER=groq TTS_PROVIDER=deepgram` the configuration most likely to
+    be run in practice (ADR-009).
     """
+    stt_provider, tts_provider, llm_provider = request.param
     reconfigure(
         monkeypatch,
         deepgram_api_key="test-key",
         anthropic_api_key="test-key",
         groq_api_key="test-key",
-        llm_provider=request.param,
+        stt_provider=stt_provider,
+        tts_provider=tts_provider,
+        llm_provider=llm_provider,
     )
 
     made: dict = {}
@@ -62,9 +80,12 @@ def wired(monkeypatch, request):
         made["llm"] = ScriptedLlm(response="Why Postgres and not something else?")
         return made["llm"]
 
+    # Patch every class on both sides of every switch: no test may reach a real
+    # vendor client, whichever way the configuration points.
     monkeypatch.setattr(server, "DeepgramFluxStt", fake_stt)
+    monkeypatch.setattr(server, "GroqWhisperStt", fake_stt)
     monkeypatch.setattr(server, "DeepgramAuraTts", fake_tts)
-    # Patch both: the switch must never reach a real vendor client in tests.
+    monkeypatch.setattr(server, "GroqOrpheusTts", fake_tts)
     monkeypatch.setattr(server, "AnthropicInterviewerLlm", fake_llm)
     monkeypatch.setattr(server, "GroqInterviewerLlm", fake_llm)
     return made
@@ -146,10 +167,54 @@ def test_requested_duration_cannot_exceed_the_configured_ceiling(wired, monkeypa
     assert ready["duration_s"] == 300, "a client cannot buy itself a longer interview"
 
 
-def test_missing_credentials_produce_a_clear_error(monkeypatch):
-    reconfigure(monkeypatch, deepgram_api_key="", anthropic_api_key="")
+@pytest.mark.parametrize(
+    "providers,blank,expected",
+    [
+        # Deepgram STT/TTS: the Deepgram key is what is missing.
+        (("deepgram", "deepgram", "groq"), ("deepgram_api_key",), "DEEPGRAM_API_KEY"),
+        # All-Groq: one key covers all three stages, and the error must name it
+        # rather than complain about Deepgram, which this configuration never
+        # touches.
+        (("groq", "groq", "groq"), ("groq_api_key",), "GROQ_API_KEY"),
+    ],
+    ids=["deepgram", "all-groq"],
+)
+def test_missing_credentials_produce_a_clear_error(monkeypatch, providers, blank, expected):
+    stt, tts, llm = providers
+    overrides = {
+        "deepgram_api_key": "test-key",
+        "anthropic_api_key": "test-key",
+        "groq_api_key": "test-key",
+        "stt_provider": stt,
+        "tts_provider": tts,
+        "llm_provider": llm,
+    }
+    overrides.update({name: "" for name in blank})
+    reconfigure(monkeypatch, **overrides)
     with TestClient(server.app) as client:
         with client.websocket_connect("/ws") as ws:
             events, _ = _drain(ws, until="error")
     assert events[0]["type"] == "error"
-    assert "DEEPGRAM_API_KEY" in events[0]["message"]
+    assert expected in events[0]["message"]
+
+
+def test_an_all_groq_pipeline_does_not_demand_a_deepgram_key(monkeypatch):
+    """The point of ADR-009: a free pipeline must need no Deepgram credential.
+
+    Guards the deduplication in `_required_key_names`, which an all-Groq
+    configuration would otherwise trip by asking for one key three times.
+    """
+    reconfigure(
+        monkeypatch,
+        deepgram_api_key="",
+        anthropic_api_key="",
+        groq_api_key="test-key",
+        stt_provider="groq",
+        tts_provider="groq",
+        llm_provider="groq",
+    )
+    with TestClient(server.app) as client:
+        body = client.get("/health").json()
+        assert body["free_tier"] is True
+        assert body["speculative"] is False, "no EagerEndOfTurn without Flux"
+        assert body["keys"] == {"groq_api_key": True}, "only the Groq key is required"
