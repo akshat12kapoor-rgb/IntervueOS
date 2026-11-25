@@ -183,3 +183,30 @@ def test_the_topic_under_discussion_counts_as_reached():
     note = coverage_note(ev)
     assert note and "failure modes" in note
     assert "system design" not in note.split("never reached:")[-1]
+
+
+def test_duration_is_never_negative():
+    """`elapsed` is a monotonic difference; a wall-clock started_at makes it
+    hugely negative. The page rendered that as "-29912805 min" before this."""
+    st = _state(q("What?"), a("This."))
+    st.started_at = 1.79e9          # wall clock, not monotonic
+    assert build_evidence(st).duration_s == 0.0
+
+
+def test_navigation_turns_are_marked_unscored():
+    """Scoring "Sure." against a topic change punishes the candidate for the
+    interview's own structure. The live run graded exactly that as 1/5."""
+    ev = build_evidence(_state(
+        q("Let's move on to failure modes.", Objective.NEXT_TOPIC),
+        a("Sure."),
+        q("What broke?", Objective.PROBE),
+        a("The consumer lagged twenty minutes behind."),
+    ))
+    assert ev.exchanges[0].answered is True     # they did reply
+    assert ev.exchanges[0].scored is False      # but it is not examinable
+    assert ev.exchanges[1].scored is True
+
+
+def test_unanswered_questions_are_unscored_too():
+    ev = build_evidence(_state(q("Never answered?")))
+    assert ev.exchanges[0].scored is False

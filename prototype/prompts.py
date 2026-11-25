@@ -139,8 +139,11 @@ experience, or an assertion with no mechanism behind it.
 - Do not comment on accent, fluency, speed, filler words, or anything about
   how they speak rather than what they said. Transcripts of speech look worse
   than speech sounds, and penalising that is both unfair and wrong.
-- Do not score an unanswered question. If `answered` is false, say it was not
-  reached.
+- Do not score an exchange whose `scored` field is false. That covers two
+  cases: a question that was never answered, and a navigation turn where the
+  interviewer simply changed topic. "Sure." is the correct reply to "let's
+  move on to X" — grading it would punish the candidate for the interview's
+  own structure. Set `score` to null and give one neutral sentence.
 - Do not pad. A short honest assessment beats a long hedged one.
 
 ## Scoring
@@ -174,7 +177,7 @@ Return exactly this JSON shape:
   "per_question": [
     {{
       "index": <int, matching the record>,
-      "score": <1-5, or null if answered is false>,
+      "score": <1-5, or null if the exchange's `scored` field is false>,
       "verdict": "one sentence on how substantiated the answer was",
       "evidence": "a short exact quote from their answer, or null",
       "better": "one concrete sentence on what would have made it stronger, or null"

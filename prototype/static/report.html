@@ -82,6 +82,8 @@ function renderQuestion(ex, a) {
     <div class="intent">Testing: ${esc(ex.intent)} &nbsp;·&nbsp; ${esc(ex.topic)}</div>
     ${!ex.answered
       ? `<div class="unanswered">Not answered — the interview moved on or ended here.</div>`
+      : !ex.scored
+      ? `<div class="unanswered">A topic change, not a question under examination — not scored.</div>`
       : `${a && a.verdict ? `<div class="verdict">${esc(a.verdict)}</div>` : ""}
          ${a && a.evidence ? `<blockquote>“${esc(a.evidence)}”</blockquote>` : ""}
          ${a && a.better ? `<div class="better">Stronger: ${esc(a.better)}</div>` : ""}`}

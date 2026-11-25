@@ -56,6 +56,11 @@ class Exchange:
     """False when the interview ended, or the candidate was cut off, before a
     reply arrived. Scoring an unanswered question would be unfair."""
 
+    scored: bool
+    """False for navigation turns and unanswered questions. "Sure." is the
+    correct reply to "let's move on to X", and grading it as a 1 would punish
+    the candidate for the engine changing topic."""
+
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
@@ -69,8 +74,7 @@ class Evidence:
 
     @property
     def probing(self) -> list[Exchange]:
-        return [e for e in self.exchanges if e.answered and e.objective not in
-                {o.value for o in _NON_PROBING}]
+        return [e for e in self.exchanges if e.scored]
 
     def to_dict(self) -> dict:
         return {
@@ -119,6 +123,11 @@ def build_evidence(state: InterviewState) -> Evidence:
                 answer_seconds=round(reply.duration, 1) if reply else 0.0,
                 interrupted=bool(reply and reply.interrupted),
                 answered=reply is not None and bool(text.strip()),
+                scored=(
+                    reply is not None
+                    and bool(text.strip())
+                    and turn.objective not in _NON_PROBING
+                ),
             )
         )
 
@@ -133,7 +142,11 @@ def build_evidence(state: InterviewState) -> Evidence:
         role=state.role,
         topics=list(state.topics),
         topics_covered=covered,
-        duration_s=round(state.elapsed, 1),
+        # Clamped: `elapsed` is a monotonic difference, so a caller that
+        # seeds started_at from the wall clock yields a huge negative number.
+        # Both the page and the assessor read this, and neither should be
+        # handed a negative duration.
+        duration_s=max(0.0, round(state.elapsed, 1)),
         exchanges=exchanges,
     )
 
