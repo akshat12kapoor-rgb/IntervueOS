@@ -210,3 +210,10 @@ def test_navigation_turns_are_marked_unscored():
 def test_unanswered_questions_are_unscored_too():
     ev = build_evidence(_state(q("Never answered?")))
     assert ev.exchanges[0].scored is False
+
+
+def test_the_shell_is_not_cacheable():
+    """A browser holding an older index.html loses the report link, and the
+    failure is silent — the server had already built the report."""
+    with TestClient(server.app) as client:
+        assert client.get("/").headers.get("cache-control") == "no-store"

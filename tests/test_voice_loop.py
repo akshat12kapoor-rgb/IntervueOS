@@ -121,8 +121,9 @@ async def test_a_draft_built_from_the_wrong_words_is_discarded(harness):
     differs anyway — answering a half-finished sentence is worse than waiting."""
     h = await run(harness([
         turn(TurnEvent.START_OF_TURN),
-        turn(TurnEvent.EAGER_END_OF_TURN, "I used Redis"),
-        turn(TurnEvent.END_OF_TURN, "I used Redis and Kafka together"),
+        turn(TurnEvent.EAGER_END_OF_TURN, "I used Redis for the hot path"),
+        turn(TurnEvent.END_OF_TURN,
+             "I used Redis for the hot path and Kafka for the write log"),
     ], lead=0.3))
     assert h.session.summary()["speculation_hit_rate"] == 0.0
     assert len(h.llm.calls) == 3

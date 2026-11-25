@@ -167,7 +167,10 @@ def _tts_model() -> str:
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+    # no-store: a browser holding yesterday's index.html silently loses any
+    # element added since, and the failure is invisible — which is how the
+    # report link went missing after it was already working server-side.
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 
 @app.get("/health")
@@ -345,6 +348,8 @@ async def ws_interview(ws: WebSocket) -> None:
                 task.add_done_callback(_report_tasks.discard)
                 try:
                     await emit_json({"type": "report", "report_id": report_id})
+                    log.info("report %s: link sent to client (/report/%s)",
+                             report_id, report_id)
                 except Exception:
                     # They closed the tab. The report is still being built and
                     # will be at /report/<id> regardless.

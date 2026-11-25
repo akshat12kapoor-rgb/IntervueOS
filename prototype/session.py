@@ -60,6 +60,28 @@ class SessionConfig:
     """A spoken interviewer turn should be short. Hard ceiling, enforced here
     rather than trusted to the prompt."""
 
+    min_answer_words: int = 5
+    """Below this, an ended turn is treated as a thinking pause rather than an
+    answer, and the interviewer waits instead of asking something new.
+
+    Flux ends a turn when it stops hearing speech. A human who pauses to think
+    mid-sentence therefore produces a complete-looking turn containing three
+    words. Responding to that asks a fresh question over the top of someone
+    who had not finished, and because their next words then arrive as another
+    short turn, it cascades into rapid-fire questioning. Observed live
+    2026-11-25; the thresholds in docs/LATENCY.md were swept against synthetic
+    speech, which never hesitates.
+
+    Kept low: a real answer can be six words ("I used Redis and Kafka
+    together"), and holding one only costs `pause_grace_s`."""
+
+    pause_grace_s: float = 2.5
+    """How long to wait for the candidate to resume before treating a short
+    turn as their whole answer."""
+
+    max_pause_holds: int = 3
+    """Cap on consecutive holds, so silence cannot stall the interview."""
+
 
 @dataclass(slots=True)
 class _Draft:
@@ -101,12 +123,16 @@ class InterviewSession:
         self._audio_in_flight = False
         self._candidate_turn_started: float = 0.0
         self._stop = asyncio.Event()
+        self._held_text: str = ""
+        self._holds: int = 0
+        self._hold_timer: asyncio.Task | None = None
 
         # Instrumentation — real numbers, reported at the end of the session.
         self.metrics: dict[str, list[float]] = {
             "eot_to_first_audio_ms": [],
             "speculation_hits": [],
             "barge_ins": [],
+            "pause_holds": [],
         }
 
     # ------------------------------------------------------------------
@@ -122,6 +148,22 @@ class InterviewSession:
         finally:
             pump_audio.cancel()
             await _quiet(pump_audio)
+            self._cancel_hold_timer()
+            # Whatever was being held when the stream closed is still
+            # something the candidate said. Record it — losing it would also
+            # lose it from the report — but do not start a reply we cannot
+            # deliver.
+            if self._held_text:
+                self.state.record(
+                    Turn(
+                        speaker="candidate",
+                        text=self._held_text,
+                        topic=self.state.current_topic,
+                        started_at=self._candidate_turn_started or time.monotonic(),
+                        ended_at=time.monotonic(),
+                    )
+                )
+                self._held_text = ""
             await self._cancel_draft()
             await self._cancel_speaking()
 
@@ -173,6 +215,9 @@ class InterviewSession:
 
     async def _on_start_of_turn(self, ev: SttEvent) -> None:
         self._candidate_turn_started = time.monotonic()
+        # They resumed inside the grace window: this is one answer with a
+        # pause in it, not two answers.
+        self._cancel_hold_timer()
         if self.floor is Floor.INTERVIEWER or self._audio_in_flight:
             await self._barge_in()
         self.floor = Floor.CANDIDATE
@@ -205,8 +250,13 @@ class InterviewSession:
             log.debug("turn resumed, discarding draft")
             await self._cancel_draft()
 
+    def _cancel_hold_timer(self) -> None:
+        if self._hold_timer is not None:
+            self._hold_timer.cancel()
+            self._hold_timer = None
+
     async def _on_end_of_turn(self, ev: SttEvent) -> None:
-        text = ev.transcript.strip()
+        text = " ".join(x for x in (self._held_text, ev.transcript.strip()) if x)
         now = time.monotonic()
 
         if not text:
@@ -215,6 +265,46 @@ class InterviewSession:
             await self._cancel_draft()
             return
 
+        # A short turn is more likely a pause for thought than a finished
+        # answer. Hold it and give them a moment to carry on.
+        if (
+            len(text.split()) < self.config.min_answer_words
+            and self._holds < self.config.max_pause_holds
+            and not self.state.is_over
+        ):
+            self._held_text = text
+            self._holds += 1
+            self._cancel_hold_timer()
+            await self._cancel_draft()
+            self._hold_timer = asyncio.create_task(
+                self._flush_after_grace(), name="pause-grace"
+            )
+            log.info("holding short turn (%d words), hold %d/%d: %r",
+                     len(text.split()), self._holds,
+                     self.config.max_pause_holds, text)
+            return
+
+        self._cancel_hold_timer()
+        self.metrics["pause_holds"].append(float(self._holds))
+        self._held_text = ""
+        self._holds = 0
+
+        await self._commit_answer(text, now)
+
+    async def _flush_after_grace(self) -> None:
+        """They did not resume. Treat what we held as the whole answer."""
+        try:
+            await asyncio.sleep(self.config.pause_grace_s)
+        except asyncio.CancelledError:
+            return
+        text, self._held_text = self._held_text, ""
+        self.metrics["pause_holds"].append(float(self._holds))
+        self._holds = 0
+        self._hold_timer = None
+        if text and not self.state.is_over:
+            await self._commit_answer(text, time.monotonic())
+
+    async def _commit_answer(self, text: str, now: float) -> None:
         self.state.record(
             Turn(
                 speaker="candidate",

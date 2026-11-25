@@ -200,11 +200,22 @@ el("end").onclick = () => {
 };
 function showReportLink() {
   if (!reportId) return;
-  const btn = el("report");
-  if (!btn) return;
+  const url = `/report/${reportId}`;
+  // Surface it in the main question area as well as the button. A page
+  // cached from before this feature existed has no #report element, and
+  // returning quietly there is how the link went missing entirely.
+  questionEl.innerHTML =
+    `Interview complete. <a href="${url}" style="color:var(--accent)">See your report</a>`;
+  let btn = el("report");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.id = "report";
+    (el("end")?.parentNode || document.body).appendChild(btn);
+  }
   btn.hidden = false;
   btn.textContent = "See your report";
-  btn.onclick = () => { window.location.href = `/report/${reportId}`; };
+  btn.onclick = () => { window.location.href = url; };
+  console.log("[intervueos] report ready:", url);
 }
 
 el("toggle-transcript").onclick = () => {
