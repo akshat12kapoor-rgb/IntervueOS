@@ -70,7 +70,9 @@ ignored. In rough order of cost:
 - [ ] JD and candidate skill maps.
 - [ ] Auth (**hard checkpoint** — privacy and lock-in).
 - [ ] Persist transcripts and turn timings.
-- [ ] First real post-interview report.
+- [x] First real post-interview report. Groq assessor over a deterministic
+      evidence record; see `report.py` and ADR-010. Held in memory, so
+      persistence below is still the blocker for anything real.
 - [ ] Usage meter + entitlement abstraction (before any user can run two interviews).
 
 ## Engineering hygiene

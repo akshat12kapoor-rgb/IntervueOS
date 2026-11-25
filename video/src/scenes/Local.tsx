@@ -61,7 +61,7 @@ cd prototype && ../.venv/bin/python -m uvicorn server:app --port 8000`}</Code>
     </Appear>
     <Note at={5.6}>
       Python 3.12+, and Node is not required. Tests:{" "}
-      <span style={{ fontFamily: MONO }}>.venv/bin/python -m pytest</span> — 96 of them, ~17 s,
+      <span style={{ fontFamily: MONO }}>.venv/bin/python -m pytest</span> — 114 of them, ~17 s,
       no network and no API keys.
     </Note>
   </Scene>

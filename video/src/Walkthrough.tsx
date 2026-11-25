@@ -11,6 +11,7 @@ import { Protocols } from "./scenes/Protocols";
 import { Division } from "./scenes/Division";
 import { Config } from "./scenes/Config";
 import { Local } from "./scenes/Local";
+import { Report } from "./scenes/Report";
 import { Deploy } from "./scenes/Deploy";
 import { Outro } from "./scenes/Outro";
 
@@ -24,6 +25,7 @@ const ORDER = [
   ["division", Division],
   ["config", Config],
   ["local", Local],
+  ["report", Report],
   ["deploy", Deploy],
   ["outro", Outro],
 ] as const;

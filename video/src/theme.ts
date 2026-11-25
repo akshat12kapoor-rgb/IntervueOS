@@ -28,6 +28,7 @@ export const SCENES = {
   division: 32,
   config: 40,
   local: 46,
+  report: 34,
   deploy: 50,
   outro: 14,
 } as const;

@@ -89,6 +89,30 @@ deterministically. The transport suite is parametrised over five provider
 combinations — including the mixed ones — with every provider class patched, so
 no test ever reaches a live API.
 
+### The report
+
+When an interview ends the server hands the browser a report id and starts
+building the assessment **detached from the WebSocket**, so closing the tab
+does not abandon it. The page at `/report/<id>` polls `/api/report/<id>` until
+it is ready — typically about six seconds.
+
+Two things to know before relying on it:
+
+- **Reports are held in memory**, capped at 50, and lost when the server
+  restarts. This is not persistence; it exists so the page can be fetched
+  after the socket closes. Save the page if you want to keep it.
+- **It needs `GROQ_API_KEY`** regardless of `LLM_PROVIDER`, because the
+  assessor always runs on Groq. With no key, the interview still works and no
+  report link appears.
+
+Relevant settings:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `REPORT_MODEL` | `openai/gpt-oss-120b` | Nothing is waiting on this, so a slower, better model is the right trade. |
+| `REPORT_REASONING_EFFORT` | `high` | `low`/`medium`/`high`. |
+| `MAX_REPORT_TOKENS` | `4000` | A truncated response fails loudly rather than rendering half a report. |
+
 ---
 
 ## 2. Configuration

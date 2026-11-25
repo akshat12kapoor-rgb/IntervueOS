@@ -517,3 +517,50 @@ provider class patched, so no test reaches a live API. Nothing was deleted, and
 - **`p99` is still transcribed as "page 99"** by Whisper and "p ninety nine" by
   Flux. Neither stack handles it; it stays in TODO.md.
 - **The post-interview report is still Opus** and still not free (ADR-004).
+
+---
+
+## ADR-010 — The report is deterministic first, judged second
+
+**Status:** ACCEPTED 2026-11-25, validated live.
+
+The post-interview assessment is split in two, and the split is the decision.
+
+`report.py` pairs each interviewer question with the answer it drew and carries
+the objective the engine chose, the topic, how long the candidate spoke and
+whether they were interrupted. **No model is involved**, so this half cannot
+hallucinate, and it is unit-tested without network access.
+
+Only the judgement goes to an LLM, and it receives that record rather than a
+raw transcript. It is never asked what the interviewer was testing, because
+that is already known — which is the payoff of the objective/phrasing split in
+ADR-003 finally being collected.
+
+**Why not Opus, as ADR-004 said.** That row was never validated; the Anthropic
+account has no credit, and it is the reason this feature sat unbuilt while the
+rest of the prototype worked. Groq runs it for nothing. This is the one place
+in the codebase where high reasoning effort is correct — nobody is waiting
+mid-conversation. Measured end to end: **~6 s**, ~1.4K in / ~2.8K out.
+
+**What the structure buys, concretely.** Two defects showed up the first time a
+real report was rendered in a browser, and both were fixable *because* the
+record is structured:
+
+- A `next_topic` turn was being graded. "Let's talk about how it failed." /
+  "Sure." scored **1/5** — punishing the candidate for the interview's own
+  structure. `Exchange.scored` now marks navigation turns and unanswered
+  questions alike, and the assessor returns null for them.
+- The assessor referred to the candidate in the third person and invented a
+  gendered pronoun. It is now required to address them as "you", which it
+  should have been doing regardless: they are the reader.
+
+Neither was visible from a unit test or a provider-level call. Rendering the
+page was the thing that found them.
+
+**Constraints accepted.** Reports live in memory, capped at 50, lost on
+restart — persistence is still open in docs/TODO.md and this does not pretend
+otherwise. The second-person rule and the no-invented-quotes rule are prompt
+constraints, not guarantees; `_validate` enforces shape, not truthfulness. A
+failed assessment renders the transcript and the error rather than an empty
+page, and the provider raises rather than returning a blank — a fabricated
+report is worse than a missing one.
